@@ -1,78 +1,93 @@
-import React from "react";
-import { Stack, Link } from "expo-router";
-import { FlatList, Pressable, StyleSheet, View, Text, Alert, Platform } from "react-native";
-import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
 
-const ICON_COLOR = "#007AFF";
+import React, { useState } from "react";
+import { Stack, router } from "expo-router";
+import { ScrollView, Pressable, StyleSheet, View, Text, Platform } from "react-native";
+import { IconSymbol } from "@/components/IconSymbol";
+import { Calendar } from 'react-native-calendars';
+import { colors, commonStyles } from "@/styles/commonStyles";
 
 export default function HomeScreen() {
-  const theme = useTheme();
-  const modalDemos = [
-    {
-      title: "Standard Modal",
-      description: "Full screen modal presentation",
-      route: "/modal",
-      color: "#007AFF",
-    },
-    {
-      title: "Form Sheet",
-      description: "Bottom sheet with detents and grabber",
-      route: "/formsheet",
-      color: "#34C759",
-    },
-    {
-      title: "Transparent Modal",
-      description: "Overlay without obscuring background",
-      route: "/transparent-modal",
-      color: "#FF9500",
-    }
-  ];
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedWeek, setSelectedWeek] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
 
-  const renderModalDemo = ({ item }: { item: (typeof modalDemos)[0] }) => (
-    <GlassView style={[
-      styles.demoCard,
-      Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-    ]} glassEffectStyle="regular">
-      <View style={[styles.demoIcon, { backgroundColor: item.color }]}>
-        <IconSymbol name="square.grid.3x3" color="white" size={24} />
-      </View>
-      <View style={styles.demoContent}>
-        <Text style={[styles.demoTitle, { color: theme.colors.text }]}>{item.title}</Text>
-        <Text style={[styles.demoDescription, { color: theme.dark ? '#98989D' : '#666' }]}>{item.description}</Text>
-      </View>
-      <Link href={item.route as any} asChild>
-        <Pressable>
-          <GlassView style={[
-            styles.tryButton,
-            Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)' }
-          ]} glassEffectStyle="clear">
-            <Text style={[styles.tryButtonText, { color: theme.colors.primary }]}>Try It</Text>
-          </GlassView>
-        </Pressable>
-      </Link>
-    </GlassView>
-  );
+  const getWeekDates = (dateString: string) => {
+    const date = new Date(dateString);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const monday = new Date(date.setDate(diff));
+    
+    const weekDates: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const currentDate = new Date(monday);
+      currentDate.setDate(monday.getDate() + i);
+      weekDates.push(currentDate.toISOString().split('T')[0]);
+    }
+    return weekDates;
+  };
+
+  const handleDayPress = (day: any) => {
+    if (viewMode === 'day') {
+      setSelectedDate(day.dateString);
+      console.log('Selected date:', day.dateString);
+      // Navigate to daily meeze
+      router.push({
+        pathname: '/(tabs)/(home)/daily-meeze',
+        params: { date: day.dateString }
+      });
+    } else {
+      const weekDates = getWeekDates(day.dateString);
+      setSelectedWeek(weekDates);
+      console.log('Selected week:', weekDates);
+      // Navigate to weekly meeze
+      router.push({
+        pathname: '/(tabs)/(home)/weekly-meeze',
+        params: { 
+          startDate: weekDates[0],
+          endDate: weekDates[6]
+        }
+      });
+    }
+  };
+
+  const getMarkedDates = () => {
+    const marked: any = {};
+    
+    if (viewMode === 'day' && selectedDate) {
+      marked[selectedDate] = {
+        selected: true,
+        selectedColor: colors.primary,
+      };
+    } else if (viewMode === 'week' && selectedWeek.length > 0) {
+      selectedWeek.forEach((date, index) => {
+        marked[date] = {
+          selected: true,
+          selectedColor: colors.highlight,
+          textColor: colors.text,
+          startingDay: index === 0,
+          endingDay: index === 6,
+        };
+      });
+    }
+    
+    return marked;
+  };
 
   const renderHeaderRight = () => (
     <Pressable
-      onPress={() => Alert.alert("Not Implemented", "This feature is not implemented yet")}
+      onPress={() => router.push('/(tabs)/(home)/timers')}
       style={styles.headerButtonContainer}
     >
-      <IconSymbol name="plus" color={theme.colors.primary} />
+      <IconSymbol name="timer" color={colors.primary} size={24} />
     </Pressable>
   );
 
   const renderHeaderLeft = () => (
     <Pressable
-      onPress={() => Alert.alert("Not Implemented", "This feature is not implemented yet")}
+      onPress={() => router.push('/(tabs)/(home)/honesty-log')}
       style={styles.headerButtonContainer}
     >
-      <IconSymbol
-        name="gear"
-        color={theme.colors.primary}
-      />
+      <IconSymbol name="book.fill" color={colors.primary} size={24} />
     </Pressable>
   );
 
@@ -81,49 +96,185 @@ export default function HomeScreen() {
       {Platform.OS === 'ios' && (
         <Stack.Screen
           options={{
-            title: "Building the app...",
+            title: "Work Clean",
             headerRight: renderHeaderRight,
             headerLeft: renderHeaderLeft,
           }}
         />
       )}
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <FlatList
-          data={modalDemos}
-          renderItem={renderModalDemo}
-          keyExtractor={(item) => item.route}
-          contentContainerStyle={[
-            styles.listContainer,
-            Platform.OS !== 'ios' && styles.listContainerWithTabBar
-          ]}
-          contentInsetAdjustmentBehavior="automatic"
+      <View style={[commonStyles.container]}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-        />
+        >
+          <View style={styles.header}>
+            <Text style={commonStyles.title}>Work Clean Productivity</Text>
+            <Text style={commonStyles.textSecondary}>
+              Select a day or week to plan your meeze
+            </Text>
+          </View>
+
+          <View style={styles.viewModeContainer}>
+            <Pressable
+              style={[
+                styles.viewModeButton,
+                viewMode === 'day' && styles.viewModeButtonActive
+              ]}
+              onPress={() => setViewMode('day')}
+            >
+              <Text style={[
+                styles.viewModeText,
+                viewMode === 'day' && styles.viewModeTextActive
+              ]}>
+                Daily View
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.viewModeButton,
+                viewMode === 'week' && styles.viewModeButtonActive
+              ]}
+              onPress={() => setViewMode('week')}
+            >
+              <Text style={[
+                styles.viewModeText,
+                viewMode === 'week' && styles.viewModeTextActive
+              ]}>
+                Weekly View
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={commonStyles.card}>
+            <Calendar
+              onDayPress={handleDayPress}
+              markedDates={getMarkedDates()}
+              markingType={viewMode === 'week' ? 'period' : 'simple'}
+              theme={{
+                backgroundColor: colors.card,
+                calendarBackground: colors.card,
+                textSectionTitleColor: colors.textSecondary,
+                selectedDayBackgroundColor: colors.primary,
+                selectedDayTextColor: '#ffffff',
+                todayTextColor: colors.accent,
+                dayTextColor: colors.text,
+                textDisabledColor: colors.textSecondary,
+                monthTextColor: colors.text,
+                textMonthFontWeight: '600',
+                textDayFontSize: 16,
+                textMonthFontSize: 18,
+              }}
+            />
+          </View>
+
+          <View style={styles.quickAccessContainer}>
+            <Text style={commonStyles.sectionTitle}>Quick Access</Text>
+            
+            <Pressable
+              style={styles.quickAccessCard}
+              onPress={() => router.push('/(tabs)/(home)/daily-calendar')}
+            >
+              <View style={[styles.quickAccessIcon, { backgroundColor: colors.primary }]}>
+                <IconSymbol name="calendar" color="#ffffff" size={24} />
+              </View>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Daily Calendar</Text>
+                <Text style={commonStyles.textSecondary}>
+                  Schedule meetings in 30-minute blocks
+                </Text>
+              </View>
+              <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
+            </Pressable>
+
+            <Pressable
+              style={styles.quickAccessCard}
+              onPress={() => router.push('/(tabs)/(home)/honesty-log')}
+            >
+              <View style={[styles.quickAccessIcon, { backgroundColor: colors.accent }]}>
+                <IconSymbol name="book.fill" color="#ffffff" size={24} />
+              </View>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Honesty Log</Text>
+                <Text style={commonStyles.textSecondary}>
+                  Track your daily reflections
+                </Text>
+              </View>
+              <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
+            </Pressable>
+
+            <Pressable
+              style={styles.quickAccessCard}
+              onPress={() => router.push('/(tabs)/(home)/timers')}
+            >
+              <View style={[styles.quickAccessIcon, { backgroundColor: colors.secondary }]}>
+                <IconSymbol name="timer" color="#ffffff" size={24} />
+              </View>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Timers</Text>
+                <Text style={commonStyles.textSecondary}>
+                  Schedule and manage your timers
+                </Text>
+              </View>
+              <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
+            </Pressable>
+          </View>
+        </ScrollView>
       </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scrollContent: {
+    padding: 16,
+    paddingBottom: Platform.OS !== 'ios' ? 100 : 16,
+  },
+  header: {
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  headerButtonContainer: {
+    padding: 8,
+  },
+  viewModeContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 4,
+  },
+  viewModeButton: {
     flex: 1,
-    // backgroundColor handled dynamically
-  },
-  listContainer: {
-    paddingVertical: 16,
+    paddingVertical: 10,
     paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
   },
-  listContainerWithTabBar: {
-    paddingBottom: 100, // Extra padding for floating tab bar
+  viewModeButtonActive: {
+    backgroundColor: colors.primary,
   },
-  demoCard: {
+  viewModeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  viewModeTextActive: {
+    color: '#ffffff',
+  },
+  quickAccessContainer: {
+    marginTop: 24,
+  },
+  quickAccessCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+    elevation: 3,
   },
-  demoIcon: {
+  quickAccessIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -131,31 +282,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
-  demoContent: {
+  quickAccessContent: {
     flex: 1,
   },
-  demoTitle: {
-    fontSize: 18,
+  quickAccessTitle: {
+    fontSize: 16,
     fontWeight: '600',
+    color: colors.text,
     marginBottom: 4,
-    // color handled dynamically
-  },
-  demoDescription: {
-    fontSize: 14,
-    lineHeight: 18,
-    // color handled dynamically
-  },
-  headerButtonContainer: {
-    padding: 6,
-  },
-  tryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  tryButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color handled dynamically
   },
 });

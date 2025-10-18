@@ -1,91 +1,131 @@
+
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { IconSymbol } from "@/components/IconSymbol";
-import { GlassView } from "expo-glass-effect";
-import { useTheme } from "@react-navigation/native";
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from "react-native";
+import { colors, commonStyles } from "@/styles/commonStyles";
 
 export default function ProfileScreen() {
-  const theme = useTheme();
-
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[
-          styles.contentContainer,
-          Platform.OS !== 'ios' && styles.contentContainerWithTabBar
-        ]}
+    <SafeAreaView style={[commonStyles.container]} edges={['top']}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <GlassView style={[
-          styles.profileHeader,
-          Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-        ]} glassEffectStyle="regular">
-          <IconSymbol name="person.circle.fill" size={80} color={theme.colors.primary} />
-          <Text style={[styles.name, { color: theme.colors.text }]}>John Doe</Text>
-          <Text style={[styles.email, { color: theme.dark ? '#98989D' : '#666' }]}>john.doe@example.com</Text>
-        </GlassView>
+        <View style={styles.header}>
+          <View style={styles.avatarContainer}>
+            <IconSymbol name="person.fill" color="#ffffff" size={48} />
+          </View>
+          <Text style={commonStyles.title}>Your Profile</Text>
+          <Text style={commonStyles.textSecondary}>
+            Manage your Work Clean settings
+          </Text>
+        </View>
 
-        <GlassView style={[
-          styles.section,
-          Platform.OS !== 'ios' && { backgroundColor: theme.dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
-        ]} glassEffectStyle="regular">
-          <View style={styles.infoRow}>
-            <IconSymbol name="phone.fill" size={20} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>+1 (555) 123-4567</Text>
+        <View style={commonStyles.card}>
+          <Text style={commonStyles.sectionTitle}>About Work Clean</Text>
+          <Text style={commonStyles.text}>
+            This app is based on the principles from &quot;Work Clean&quot; by Dan Charnas, 
+            which teaches the organizational and mental practices of professional chefs 
+            to help you work more efficiently and mindfully.
+          </Text>
+        </View>
+
+        <View style={commonStyles.card}>
+          <Text style={commonStyles.sectionTitle}>Key Concepts</Text>
+          
+          <View style={styles.conceptItem}>
+            <Text style={styles.conceptEmoji}>🔥</Text>
+            <View style={styles.conceptContent}>
+              <Text style={styles.conceptTitle}>Front Burner</Text>
+              <Text style={commonStyles.textSecondary}>
+                Active projects requiring immediate attention
+              </Text>
+            </View>
           </View>
-          <View style={styles.infoRow}>
-            <IconSymbol name="location.fill" size={20} color={theme.dark ? '#98989D' : '#666'} />
-            <Text style={[styles.infoText, { color: theme.colors.text }]}>San Francisco, CA</Text>
+
+          <View style={styles.conceptItem}>
+            <Text style={styles.conceptEmoji}>🔙</Text>
+            <View style={styles.conceptContent}>
+              <Text style={styles.conceptTitle}>Back Burner</Text>
+              <Text style={commonStyles.textSecondary}>
+                Projects on hold but not forgotten
+              </Text>
+            </View>
           </View>
-        </GlassView>
+
+          <View style={styles.conceptItem}>
+            <Text style={styles.conceptEmoji}>📝</Text>
+            <View style={styles.conceptContent}>
+              <Text style={styles.conceptTitle}>Meeze</Text>
+              <Text style={commonStyles.textSecondary}>
+                Mise en place - everything in its place
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.conceptItem}>
+            <Text style={styles.conceptEmoji}>📖</Text>
+            <View style={styles.conceptContent}>
+              <Text style={styles.conceptTitle}>Honesty Log</Text>
+              <Text style={commonStyles.textSecondary}>
+                Daily reflections and honest self-assessment
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={commonStyles.card}>
+          <Text style={commonStyles.sectionTitle}>App Features</Text>
+          <Text style={commonStyles.text}>
+            - Daily and Weekly Meeze planning{'\n'}
+            - 30-minute block calendar scheduling{'\n'}
+            - Honesty log for reflections{'\n'}
+            - Built-in timers for focused work{'\n'}
+            - Front and back burner project tracking
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    // backgroundColor handled dynamically
+  scrollContent: {
+    padding: 16,
+    paddingBottom: Platform.OS !== 'ios' ? 100 : 16,
   },
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 20,
-  },
-  contentContainerWithTabBar: {
-    paddingBottom: 100, // Extra padding for floating tab bar
-  },
-  profileHeader: {
+  header: {
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 32,
+    marginBottom: 24,
+  },
+  avatarContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
-    gap: 12,
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
+    elevation: 5,
   },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    // color handled dynamically
-  },
-  email: {
-    fontSize: 16,
-    // color handled dynamically
-  },
-  section: {
-    borderRadius: 12,
-    padding: 20,
-    gap: 12,
-  },
-  infoRow: {
+  conceptItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    marginBottom: 16,
   },
-  infoText: {
+  conceptEmoji: {
+    fontSize: 32,
+    marginRight: 16,
+  },
+  conceptContent: {
+    flex: 1,
+  },
+  conceptTitle: {
     fontSize: 16,
-    // color handled dynamically
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
   },
 });
