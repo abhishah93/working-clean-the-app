@@ -9,13 +9,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 interface CalendarEvent {
   id: string;
   time: string;
+  duration: number; // in minutes (5, 10, 15, etc.)
   title: string;
   description: string;
   type?: 'process' | 'immersive';
+  context: 'work' | 'home';
 }
 
 export default function DailyCalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [context, setContext] = useState<'work' | 'home'>('work');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -23,24 +26,26 @@ export default function DailyCalendarScreen() {
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventType, setEventType] = useState<'process' | 'immersive'>('process');
+  const [eventDuration, setEventDuration] = useState(30);
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
 
-  const timeSlots = Array.from({ length: 48 }, (_, i) => {
-    const hour = Math.floor(i / 2);
-    const minute = i % 2 === 0 ? '00' : '30';
-    return `${hour.toString().padStart(2, '0')}:${minute}`;
+  // Generate time slots in 5-minute increments
+  const timeSlots = Array.from({ length: 288 }, (_, i) => {
+    const hour = Math.floor(i / 12);
+    const minute = (i % 12) * 5;
+    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
   });
 
   useEffect(() => {
     loadEvents();
-  }, [selectedDate]);
+  }, [selectedDate, context]);
 
   const loadEvents = async () => {
     try {
-      const stored = await AsyncStorage.getItem(`calendar-${selectedDate}`);
+      const stored = await AsyncStorage.getItem(`calendar-${context}-${selectedDate}`);
       if (stored) {
         setEvents(JSON.parse(stored));
-        console.log('Loaded calendar events for', selectedDate);
+        console.log('Loaded calendar events for', context, selectedDate);
       } else {
         setEvents([]);
       }
@@ -51,8 +56,8 @@ export default function DailyCalendarScreen() {
 
   const saveEvents = async (updatedEvents: CalendarEvent[]) => {
     try {
-      await AsyncStorage.setItem(`calendar-${selectedDate}`, JSON.stringify(updatedEvents));
-      console.log('Saved calendar events for', selectedDate);
+      await AsyncStorage.setItem(`calendar-${context}-${selectedDate}`, JSON.stringify(updatedEvents));
+      console.log('Saved calendar events for', context, selectedDate);
       setEvents(updatedEvents);
     } catch (error) {
       console.error('Error saving calendar events:', error);
@@ -64,6 +69,7 @@ export default function DailyCalendarScreen() {
     setEventTitle('');
     setEventDescription('');
     setEventType('process');
+    setEventDuration(30);
     setEditingEvent(null);
     setModalVisible(true);
   };
@@ -73,6 +79,7 @@ export default function DailyCalendarScreen() {
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventType(event.type || 'process');
+    setEventDuration(event.duration);
     setEditingEvent(event);
     setModalVisible(true);
   };
@@ -86,9 +93,11 @@ export default function DailyCalendarScreen() {
     const newEvent: CalendarEvent = {
       id: editingEvent?.id || Date.now().toString(),
       time: selectedTime,
+      duration: eventDuration,
       title: eventTitle,
       description: eventDescription,
       type: eventType,
+      context: context,
     };
 
     let updatedEvents: CalendarEvent[];
@@ -152,8 +161,24 @@ export default function DailyCalendarScreen() {
   };
 
   const getEventForTime = (time: string) => {
-    return events.find(e => e.time === time);
+    return events.find(e => {
+      const eventStart = e.time;
+      const [hours, minutes] = eventStart.split(':').map(Number);
+      const eventStartMinutes = hours * 60 + minutes;
+      const [checkHours, checkMinutes] = time.split(':').map(Number);
+      const checkMinutes_total = checkHours * 60 + checkMinutes;
+      
+      return checkMinutes_total >= eventStartMinutes && 
+             checkMinutes_total < eventStartMinutes + e.duration;
+    });
   };
+
+  const isTimeSlotOccupied = (time: string) => {
+    return getEventForTime(time) !== undefined;
+  };
+
+  // Only show time slots at 15-minute intervals for better UI
+  const displayTimeSlots = timeSlots.filter((_, index) => index % 3 === 0);
 
   return (
     <>
@@ -169,10 +194,52 @@ export default function DailyCalendarScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Text style={commonStyles.title}>30-Minute Time Blocks</Text>
+            <Text style={commonStyles.title}>5-Minute Time Blocks</Text>
             <Text style={commonStyles.textSecondary}>
               Tap to add/edit • Long press to move events
             </Text>
+          </View>
+
+          {/* Context Tabs */}
+          <View style={styles.contextTabs}>
+            <Pressable
+              style={[
+                styles.contextTab,
+                context === 'work' && styles.contextTabActive
+              ]}
+              onPress={() => setContext('work')}
+            >
+              <IconSymbol 
+                name="briefcase.fill" 
+                color={context === 'work' ? '#ffffff' : colors.textSecondary} 
+                size={20} 
+              />
+              <Text style={[
+                styles.contextTabText,
+                context === 'work' && styles.contextTabTextActive
+              ]}>
+                Work
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.contextTab,
+                context === 'home' && styles.contextTabActive
+              ]}
+              onPress={() => setContext('home')}
+            >
+              <IconSymbol 
+                name="house.fill" 
+                color={context === 'home' ? '#ffffff' : colors.textSecondary} 
+                size={20} 
+              />
+              <Text style={[
+                styles.contextTabText,
+                context === 'home' && styles.contextTabTextActive
+              ]}>
+                Home
+              </Text>
+            </Pressable>
           </View>
 
           {draggedEvent && (
@@ -184,27 +251,28 @@ export default function DailyCalendarScreen() {
             </View>
           )}
 
-          {timeSlots.map((time) => {
+          {displayTimeSlots.map((time) => {
             const event = getEventForTime(time);
             const isBeingMoved = draggedEvent?.id === event?.id;
+            const isOccupied = isTimeSlotOccupied(time);
             
             return (
               <Pressable
                 key={time}
                 style={[
                   styles.timeSlot,
-                  event && styles.timeSlotWithEvent,
+                  event && event.time === time && styles.timeSlotWithEvent,
                   isBeingMoved && styles.timeSlotBeingMoved,
-                  draggedEvent && !event && styles.timeSlotDropTarget,
+                  draggedEvent && !isOccupied && styles.timeSlotDropTarget,
                 ]}
                 onPress={() => handleTimeSlotPress(time)}
-                onLongPress={() => event && handleLongPress(event)}
+                onLongPress={() => event && event.time === time && handleLongPress(event)}
               >
                 <View style={styles.timeSlotTime}>
                   <Text style={styles.timeText}>{time}</Text>
                 </View>
                 <View style={styles.timeSlotContent}>
-                  {event ? (
+                  {event && event.time === time ? (
                     <>
                       <View style={styles.eventHeader}>
                         <Text style={styles.eventTitle}>{event.title}</Text>
@@ -219,6 +287,7 @@ export default function DailyCalendarScreen() {
                           </View>
                         )}
                       </View>
+                      <Text style={styles.eventDuration}>{event.duration} minutes</Text>
                       {event.description ? (
                         <Text style={styles.eventDescription}>{event.description}</Text>
                       ) : null}
@@ -229,6 +298,8 @@ export default function DailyCalendarScreen() {
                         <IconSymbol name="trash" color={colors.secondary} size={18} />
                       </Pressable>
                     </>
+                  ) : isOccupied ? (
+                    <Text style={styles.occupiedSlotText}>Occupied</Text>
                   ) : (
                     <Text style={styles.emptySlotText}>
                       {draggedEvent ? 'Tap to move here' : 'Tap to add event'}
@@ -276,6 +347,27 @@ export default function DailyCalendarScreen() {
                 value={eventDescription}
                 onChangeText={setEventDescription}
               />
+
+              <Text style={styles.modalLabel}>Duration (minutes):</Text>
+              <View style={styles.durationSelector}>
+                {[5, 10, 15, 30, 45, 60, 90, 120].map((duration) => (
+                  <Pressable
+                    key={duration}
+                    style={[
+                      styles.durationOption,
+                      eventDuration === duration && styles.durationOptionActive
+                    ]}
+                    onPress={() => setEventDuration(duration)}
+                  >
+                    <Text style={[
+                      styles.durationOptionText,
+                      eventDuration === duration && styles.durationOptionTextActive
+                    ]}>
+                      {duration}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
 
               <Text style={styles.modalLabel}>Task Type:</Text>
               <View style={styles.typeSelector}>
@@ -328,8 +420,37 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS !== 'ios' ? 100 : 16,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 16,
     alignItems: 'center',
+  },
+  contextTabs: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 4,
+    gap: 8,
+  },
+  contextTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    gap: 8,
+  },
+  contextTabActive: {
+    backgroundColor: colors.primary,
+  },
+  contextTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  contextTabTextActive: {
+    color: '#ffffff',
   },
   movingBanner: {
     flexDirection: 'row',
@@ -391,6 +512,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontStyle: 'italic',
   },
+  occupiedSlotText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    opacity: 0.5,
+  },
   eventHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -402,6 +529,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     flex: 1,
+  },
+  eventDuration: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   eventTypeBadge: {
     width: 28,
@@ -437,6 +570,7 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -455,6 +589,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
+  },
+  durationSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  durationOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  durationOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.highlight,
+  },
+  durationOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  durationOptionTextActive: {
+    color: colors.primary,
   },
   typeSelector: {
     flexDirection: 'row',

@@ -20,11 +20,24 @@ interface HonestyEntry {
   content: string;
 }
 
+interface HabitLog {
+  habitId: string;
+  date: string;
+  completed: boolean;
+}
+
+interface Habit {
+  id: string;
+  name: string;
+  context: 'work' | 'home';
+}
+
 export default function HonestyLogScreen() {
   const [entries, setEntries] = useState<HonestyEntry[]>([]);
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
   const [newEntry, setNewEntry] = useState('');
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
+  const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   
   const [showTaskLogModal, setShowTaskLogModal] = useState(false);
   const [logType, setLogType] = useState<'task' | 'break'>('task');
@@ -180,6 +193,167 @@ export default function HonestyLogScreen() {
     return todayBreaks.reduce((sum, log) => sum + log.timeSpent, 0);
   };
 
+  const getWeeklyStats = async () => {
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    const weekLogs = taskLogs.filter(log => {
+      const logDate = new Date(log.date);
+      return logDate >= weekAgo && logDate <= today;
+    });
+
+    const workTime = weekLogs
+      .filter(log => log.type === 'task')
+      .reduce((sum, log) => sum + log.timeSpent, 0);
+    
+    const breakTime = weekLogs
+      .filter(log => log.type === 'break')
+      .reduce((sum, log) => sum + log.timeSpent, 0);
+
+    // Load habit data
+    const workHabits = await loadHabitsForContext('work');
+    const homeHabits = await loadHabitsForContext('home');
+    const workHabitLogs = await loadHabitLogsForContext('work');
+    const homeHabitLogs = await loadHabitLogsForContext('home');
+
+    const allHabits = [...workHabits, ...homeHabits];
+    const allHabitLogs = [...workHabitLogs, ...homeHabitLogs];
+
+    const habitStats = allHabits.map(habit => {
+      const weekCompletions = allHabitLogs.filter(log => {
+        const logDate = new Date(log.date);
+        return log.habitId === habit.id && 
+               log.completed && 
+               logDate >= weekAgo && 
+               logDate <= today;
+      }).length;
+
+      return {
+        name: habit.name,
+        completions: weekCompletions,
+        rate: Math.round((weekCompletions / 7) * 100)
+      };
+    });
+
+    return {
+      workTime,
+      breakTime,
+      totalTime: workTime + breakTime,
+      habitStats,
+      daysTracked: 7
+    };
+  };
+
+  const loadHabitsForContext = async (context: 'work' | 'home'): Promise<Habit[]> => {
+    try {
+      const stored = await AsyncStorage.getItem(`habits-${context}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      console.error('Error loading habits:', error);
+      return [];
+    }
+  };
+
+  const loadHabitLogsForContext = async (context: 'work' | 'home'): Promise<HabitLog[]> => {
+    try {
+      const stored = await AsyncStorage.getItem(`habit-logs-${context}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+      console.error('Error loading habit logs:', error);
+      return [];
+    }
+  };
+
+  const WeeklyReportModal = () => {
+    const [stats, setStats] = useState<any>(null);
+
+    useEffect(() => {
+      if (showWeeklyReport) {
+        getWeeklyStats().then(setStats);
+      }
+    }, [showWeeklyReport]);
+
+    if (!stats) return null;
+
+    return (
+      <Modal
+        visible={showWeeklyReport}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowWeeklyReport(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.reportModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={commonStyles.title}>Weekly Report</Text>
+              <Pressable onPress={() => setShowWeeklyReport(false)}>
+                <IconSymbol name="xmark" color={colors.text} size={24} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.reportCard}>
+                <Text style={styles.reportSectionTitle}>⏱️ Time Tracking</Text>
+                <View style={styles.reportRow}>
+                  <Text style={styles.reportLabel}>Work Time:</Text>
+                  <Text style={styles.reportValue}>{formatTime(stats.workTime)}</Text>
+                </View>
+                <View style={styles.reportRow}>
+                  <Text style={styles.reportLabel}>Break Time:</Text>
+                  <Text style={styles.reportValue}>{formatTime(stats.breakTime)}</Text>
+                </View>
+                <View style={styles.reportRow}>
+                  <Text style={styles.reportLabel}>Total Time:</Text>
+                  <Text style={[styles.reportValue, styles.reportValueBold]}>
+                    {formatTime(stats.totalTime)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.reportCard}>
+                <Text style={styles.reportSectionTitle}>✅ Habit Completion</Text>
+                {stats.habitStats.length === 0 ? (
+                  <Text style={commonStyles.textSecondary}>No habits tracked this week</Text>
+                ) : (
+                  stats.habitStats.map((habit: any, index: number) => (
+                    <View key={index} style={styles.habitReportRow}>
+                      <View style={styles.habitReportInfo}>
+                        <Text style={styles.habitReportName}>{habit.name}</Text>
+                        <Text style={styles.habitReportCount}>
+                          {habit.completions}/7 days
+                        </Text>
+                      </View>
+                      <View style={styles.habitReportProgress}>
+                        <View style={styles.progressBar}>
+                          <View 
+                            style={[
+                              styles.progressFill, 
+                              { width: `${habit.rate}%` }
+                            ]} 
+                          />
+                        </View>
+                        <Text style={styles.habitReportRate}>{habit.rate}%</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+
+              <View style={styles.reportCard}>
+                <Text style={styles.reportSectionTitle}>📊 Summary</Text>
+                <Text style={commonStyles.text}>
+                  This week you logged {formatTime(stats.workTime)} of focused work time
+                  {stats.habitStats.length > 0 && ` and completed ${stats.habitStats.reduce((sum: number, h: any) => sum + h.completions, 0)} habit check-ins`}.
+                  Keep up the great work!
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   return (
     <>
       <Stack.Screen
@@ -200,6 +374,15 @@ export default function HonestyLogScreen() {
               Track time on tasks, breaks, and reflections
             </Text>
           </View>
+
+          {/* Weekly Report Button */}
+          <Pressable 
+            style={[buttonStyles.accent, { marginBottom: 16 }]} 
+            onPress={() => setShowWeeklyReport(true)}
+          >
+            <IconSymbol name="chart.bar.fill" color="#ffffff" size={20} />
+            <Text style={[buttonStyles.text, { marginLeft: 8 }]}>View Weekly Report</Text>
+          </Pressable>
 
           {/* Today's Summary */}
           <View style={commonStyles.card}>
@@ -389,6 +572,8 @@ export default function HonestyLogScreen() {
             </View>
           </View>
         </Modal>
+
+        <WeeklyReportModal />
       </View>
     </>
   );
@@ -543,6 +728,14 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
   },
+  reportModalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '85%',
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -580,5 +773,78 @@ const styles = StyleSheet.create({
   },
   typeOptionTextActive: {
     color: colors.primary,
+  },
+  reportCard: {
+    backgroundColor: colors.highlight,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  reportSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  reportRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reportLabel: {
+    fontSize: 16,
+    color: colors.text,
+  },
+  reportValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  reportValueBold: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  habitReportRow: {
+    marginBottom: 16,
+  },
+  habitReportInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  habitReportName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  habitReportCount: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  habitReportProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  progressBar: {
+    flex: 1,
+    height: 8,
+    backgroundColor: colors.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.success,
+    borderRadius: 4,
+  },
+  habitReportRate: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.success,
+    width: 45,
+    textAlign: 'right',
   },
 });

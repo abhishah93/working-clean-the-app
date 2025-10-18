@@ -1,16 +1,17 @@
 
+import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Platform, Modal, Alert } from "react-native";
+import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
+import { IconSymbol } from "@/components/IconSymbol";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState, useEffect } from "react";
 import { Stack, useLocalSearchParams, router } from "expo-router";
-import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Platform, Modal, Alert } from "react-native";
-import { IconSymbol } from "@/components/IconSymbol";
-import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Task {
   id: string;
   text: string;
   type: 'process' | 'immersive';
   miniTasks: MiniTask[];
+  context: 'work' | 'home';
 }
 
 interface MiniTask {
@@ -35,6 +36,7 @@ export default function WeeklyMeezeScreen() {
   const startDate = params.startDate as string || new Date().toISOString().split('T')[0];
   const endDate = params.endDate as string || new Date().toISOString().split('T')[0];
   
+  const [context, setContext] = useState<'work' | 'home'>('work');
   const [data, setData] = useState<WeeklyMeezeData>({
     accomplishments: '',
     topGoals: ['', '', ''],
@@ -55,19 +57,25 @@ export default function WeeklyMeezeScreen() {
 
   useEffect(() => {
     loadData();
-  }, [startDate]);
+  }, [startDate, context]);
 
   const loadData = async () => {
     try {
-      const stored = await AsyncStorage.getItem(`weekly-meeze-${startDate}`);
+      const stored = await AsyncStorage.getItem(`weekly-meeze-${context}-${startDate}`);
       if (stored) {
-        const parsedData = JSON.parse(stored);
-        // Ensure topGoals is always an array of 3 items
-        if (!parsedData.topGoals || parsedData.topGoals.length !== 3) {
-          parsedData.topGoals = ['', '', ''];
-        }
-        setData(parsedData);
-        console.log('Loaded weekly meeze data for week starting', startDate);
+        setData(JSON.parse(stored));
+        console.log('Loaded weekly meeze data for', context, startDate);
+      } else {
+        setData({
+          accomplishments: '',
+          topGoals: ['', '', ''],
+          frontBurners: '',
+          backBurners: '',
+          wins: '',
+          challenges: '',
+          changes: '',
+          tasks: [],
+        });
       }
     } catch (error) {
       console.error('Error loading weekly meeze:', error);
@@ -76,8 +84,8 @@ export default function WeeklyMeezeScreen() {
 
   const saveData = async () => {
     try {
-      await AsyncStorage.setItem(`weekly-meeze-${startDate}`, JSON.stringify(data));
-      console.log('Saved weekly meeze data for week starting', startDate);
+      await AsyncStorage.setItem(`weekly-meeze-${context}-${startDate}`, JSON.stringify(data));
+      console.log('Saved weekly meeze data for', context, startDate);
       router.back();
     } catch (error) {
       console.error('Error saving weekly meeze:', error);
@@ -85,9 +93,9 @@ export default function WeeklyMeezeScreen() {
   };
 
   const updateTopGoal = (index: number, value: string) => {
-    const newGoals = [...data.topGoals];
-    newGoals[index] = value;
-    setData({ ...data, topGoals: newGoals });
+    const updatedGoals = [...data.topGoals];
+    updatedGoals[index] = value;
+    setData({ ...data, topGoals: updatedGoals });
   };
 
   const addTask = () => {
@@ -101,6 +109,7 @@ export default function WeeklyMeezeScreen() {
       text: newTaskText,
       type: newTaskType,
       miniTasks: [],
+      context: context,
     };
 
     setData({ ...data, tasks: [...data.tasks, newTask] });
@@ -171,9 +180,13 @@ export default function WeeklyMeezeScreen() {
   };
 
   const formatDateRange = (start: string, end: string) => {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    const startDate = new Date(start + 'T00:00:00');
+    const endDate = new Date(end + 'T00:00:00');
+    
+    const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    
+    return `${startStr} - ${endStr}`;
   };
 
   return (
@@ -192,6 +205,48 @@ export default function WeeklyMeezeScreen() {
           <View style={styles.dateHeader}>
             <IconSymbol name="calendar" color={colors.primary} size={24} />
             <Text style={styles.dateText}>{formatDateRange(startDate, endDate)}</Text>
+          </View>
+
+          {/* Context Tabs */}
+          <View style={styles.contextTabs}>
+            <Pressable
+              style={[
+                styles.contextTab,
+                context === 'work' && styles.contextTabActive
+              ]}
+              onPress={() => setContext('work')}
+            >
+              <IconSymbol 
+                name="briefcase.fill" 
+                color={context === 'work' ? '#ffffff' : colors.textSecondary} 
+                size={20} 
+              />
+              <Text style={[
+                styles.contextTabText,
+                context === 'work' && styles.contextTabTextActive
+              ]}>
+                Work
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.contextTab,
+                context === 'home' && styles.contextTabActive
+              ]}
+              onPress={() => setContext('home')}
+            >
+              <IconSymbol 
+                name="house.fill" 
+                color={context === 'home' ? '#ffffff' : colors.textSecondary} 
+                size={20} 
+              />
+              <Text style={[
+                styles.contextTabText,
+                context === 'home' && styles.contextTabTextActive
+              ]}>
+                Home
+              </Text>
+            </Pressable>
           </View>
 
           <View style={commonStyles.card}>
@@ -213,19 +268,16 @@ export default function WeeklyMeezeScreen() {
           <View style={commonStyles.card}>
             <Text style={commonStyles.sectionTitle}>🏆 Top 3 Goals for the Week</Text>
             <Text style={commonStyles.textSecondary}>
-              Define your three most important goals
+              Focus on your three most important objectives
             </Text>
-            
-            {[0, 1, 2].map((index) => (
-              <View key={index} style={styles.goalRow}>
-                <View style={styles.goalNumber}>
-                  <Text style={styles.goalNumberText}>{index + 1}</Text>
-                </View>
+            {data.topGoals.map((goal, index) => (
+              <View key={index} style={styles.goalInputRow}>
+                <Text style={styles.goalNumber}>{index + 1}.</Text>
                 <TextInput
-                  style={styles.goalInput}
+                  style={[commonStyles.input, { flex: 1, marginBottom: 8 }]}
                   placeholder={`Goal ${index + 1}`}
                   placeholderTextColor={colors.textSecondary}
-                  value={data.topGoals[index]}
+                  value={goal}
                   onChangeText={(text) => updateTopGoal(index, text)}
                 />
               </View>
@@ -357,9 +409,9 @@ export default function WeeklyMeezeScreen() {
           </View>
 
           <View style={commonStyles.card}>
-            <Text style={commonStyles.sectionTitle}>⚠️ Challenges Faced</Text>
+            <Text style={commonStyles.sectionTitle}>⚠️ Challenges</Text>
             <Text style={commonStyles.textSecondary}>
-              What obstacles did you encounter this week?
+              What obstacles did you face this week?
             </Text>
             <TextInput
               style={commonStyles.textArea}
@@ -375,13 +427,13 @@ export default function WeeklyMeezeScreen() {
           <View style={commonStyles.card}>
             <Text style={commonStyles.sectionTitle}>🔄 Changes Needed</Text>
             <Text style={commonStyles.textSecondary}>
-              What adjustments do you need to make moving forward?
+              What adjustments will you make for next week?
             </Text>
             <TextInput
               style={commonStyles.textArea}
               multiline
               numberOfLines={4}
-              placeholder="Note any changes you need to make..."
+              placeholder="Plan your improvements..."
               placeholderTextColor={colors.textSecondary}
               value={data.changes}
               onChangeText={(text) => setData({ ...data, changes: text })}
@@ -519,7 +571,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
     padding: 16,
     backgroundColor: colors.card,
     borderRadius: 12,
@@ -532,34 +584,45 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginLeft: 12,
   },
-  goalRow: {
+  contextTabs: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 4,
+    gap: 8,
+  },
+  contextTab: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
-  },
-  goalNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    gap: 8,
   },
-  goalNumberText: {
-    fontSize: 16,
-    fontWeight: '700',
+  contextTabActive: {
+    backgroundColor: colors.primary,
+  },
+  contextTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  contextTabTextActive: {
     color: '#ffffff',
   },
-  goalInput: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: colors.text,
+  goalInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  goalNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+    width: 24,
   },
   taskHeader: {
     flexDirection: 'row',

@@ -13,7 +13,7 @@ export default function HomeScreen() {
 
   // Get Sunday to Saturday week dates
   const getWeekDates = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = new Date(dateString + 'T00:00:00');
     const day = date.getDay(); // 0 = Sunday, 6 = Saturday
     
     // Calculate Sunday of the week
@@ -185,7 +185,39 @@ export default function HomeScreen() {
               <View style={styles.quickAccessContent}>
                 <Text style={styles.quickAccessTitle}>Daily Calendar</Text>
                 <Text style={commonStyles.textSecondary}>
-                  Schedule meetings in 30-minute blocks
+                  Schedule activities in 5-minute blocks
+                </Text>
+              </View>
+              <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
+            </Pressable>
+
+            <Pressable
+              style={styles.quickAccessCard}
+              onPress={() => router.push('/(tabs)/(home)/routines')}
+            >
+              <View style={[styles.quickAccessIcon, { backgroundColor: '#9b59b6' }]}>
+                <IconSymbol name="repeat" color="#ffffff" size={24} />
+              </View>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Routines</Text>
+                <Text style={commonStyles.textSecondary}>
+                  Create and manage your routines
+                </Text>
+              </View>
+              <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
+            </Pressable>
+
+            <Pressable
+              style={styles.quickAccessCard}
+              onPress={() => router.push('/(tabs)/(home)/habit-tracker')}
+            >
+              <View style={[styles.quickAccessIcon, { backgroundColor: colors.success }]}>
+                <IconSymbol name="checkmark.circle.fill" color="#ffffff" size={24} />
+              </View>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Habit Tracker</Text>
+                <Text style={commonStyles.textSecondary}>
+                  Track your daily habits
                 </Text>
               </View>
               <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
@@ -201,7 +233,7 @@ export default function HomeScreen() {
               <View style={styles.quickAccessContent}>
                 <Text style={styles.quickAccessTitle}>Honesty Log</Text>
                 <Text style={commonStyles.textSecondary}>
-                  Track time on tasks and breaks
+                  Track time and view weekly reports
                 </Text>
               </View>
               <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />

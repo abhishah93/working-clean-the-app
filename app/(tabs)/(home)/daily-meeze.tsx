@@ -5,12 +5,15 @@ import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Platform, Mod
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDailyQuote } from "@/utils/quotes";
 
 interface Task {
   id: string;
   text: string;
   type: 'process' | 'immersive';
   miniTasks: MiniTask[];
+  scheduledTime?: string;
+  context: 'work' | 'home';
 }
 
 interface MiniTask {
@@ -31,6 +34,7 @@ export default function DailyMeezeScreen() {
   const params = useLocalSearchParams();
   const date = params.date as string || new Date().toISOString().split('T')[0];
   
+  const [context, setContext] = useState<'work' | 'home'>('work');
   const [data, setData] = useState<DailyMeezeData>({
     accomplishments: '',
     frontBurners: '',
@@ -41,21 +45,33 @@ export default function DailyMeezeScreen() {
 
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showMiniTaskModal, setShowMiniTaskModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskType, setNewTaskType] = useState<'process' | 'immersive'>('process');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [newMiniTaskText, setNewMiniTaskText] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [quote, setQuote] = useState('');
 
   useEffect(() => {
     loadData();
-  }, [date]);
+    setQuote(getDailyQuote(date));
+  }, [date, context]);
 
   const loadData = async () => {
     try {
-      const stored = await AsyncStorage.getItem(`daily-meeze-${date}`);
+      const stored = await AsyncStorage.getItem(`daily-meeze-${context}-${date}`);
       if (stored) {
         setData(JSON.parse(stored));
-        console.log('Loaded daily meeze data for', date);
+        console.log('Loaded daily meeze data for', context, date);
+      } else {
+        setData({
+          accomplishments: '',
+          frontBurners: '',
+          backBurners: '',
+          wins: '',
+          tasks: [],
+        });
       }
     } catch (error) {
       console.error('Error loading daily meeze:', error);
@@ -64,8 +80,8 @@ export default function DailyMeezeScreen() {
 
   const saveData = async () => {
     try {
-      await AsyncStorage.setItem(`daily-meeze-${date}`, JSON.stringify(data));
-      console.log('Saved daily meeze data for', date);
+      await AsyncStorage.setItem(`daily-meeze-${context}-${date}`, JSON.stringify(data));
+      console.log('Saved daily meeze data for', context, date);
       router.back();
     } catch (error) {
       console.error('Error saving daily meeze:', error);
@@ -83,10 +99,13 @@ export default function DailyMeezeScreen() {
       text: newTaskText,
       type: newTaskType,
       miniTasks: [],
+      scheduledTime: scheduledTime || undefined,
+      context: context,
     };
 
     setData({ ...data, tasks: [...data.tasks, newTask] });
     setNewTaskText('');
+    setScheduledTime('');
     setShowTaskModal(false);
   };
 
@@ -97,6 +116,27 @@ export default function DailyMeezeScreen() {
   const openMiniTaskModal = (task: Task) => {
     setSelectedTask(task);
     setShowMiniTaskModal(true);
+  };
+
+  const openScheduleModal = (task: Task) => {
+    setSelectedTask(task);
+    setScheduledTime(task.scheduledTime || '');
+    setShowScheduleModal(true);
+  };
+
+  const saveScheduledTime = () => {
+    if (!selectedTask) return;
+
+    const updatedTasks = data.tasks.map(t => {
+      if (t.id === selectedTask.id) {
+        return { ...t, scheduledTime: scheduledTime || undefined };
+      }
+      return t;
+    });
+
+    setData({ ...data, tasks: updatedTasks });
+    setShowScheduleModal(false);
+    setSelectedTask(null);
   };
 
   const addMiniTask = () => {
@@ -153,7 +193,7 @@ export default function DailyMeezeScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = new Date(dateString + 'T00:00:00');
     return date.toLocaleDateString('en-US', { 
       weekday: 'long', 
       year: 'numeric', 
@@ -178,6 +218,54 @@ export default function DailyMeezeScreen() {
           <View style={styles.dateHeader}>
             <IconSymbol name="calendar" color={colors.primary} size={24} />
             <Text style={styles.dateText}>{formatDate(date)}</Text>
+          </View>
+
+          {/* Quote of the Day */}
+          <View style={styles.quoteCard}>
+            <IconSymbol name="quote.bubble" color={colors.accent} size={28} />
+            <Text style={styles.quoteText}>{quote}</Text>
+          </View>
+
+          {/* Context Tabs */}
+          <View style={styles.contextTabs}>
+            <Pressable
+              style={[
+                styles.contextTab,
+                context === 'work' && styles.contextTabActive
+              ]}
+              onPress={() => setContext('work')}
+            >
+              <IconSymbol 
+                name="briefcase.fill" 
+                color={context === 'work' ? '#ffffff' : colors.textSecondary} 
+                size={20} 
+              />
+              <Text style={[
+                styles.contextTabText,
+                context === 'work' && styles.contextTabTextActive
+              ]}>
+                Work
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.contextTab,
+                context === 'home' && styles.contextTabActive
+              ]}
+              onPress={() => setContext('home')}
+            >
+              <IconSymbol 
+                name="house.fill" 
+                color={context === 'home' ? '#ffffff' : colors.textSecondary} 
+                size={20} 
+              />
+              <Text style={[
+                styles.contextTabText,
+                context === 'home' && styles.contextTabTextActive
+              ]}>
+                Home
+              </Text>
+            </Pressable>
           </View>
 
           <View style={commonStyles.card}>
@@ -239,7 +327,7 @@ export default function DailyMeezeScreen() {
               </Pressable>
             </View>
             <Text style={commonStyles.textSecondary}>
-              Add tasks and categorize them as process or immersive
+              Add tasks and schedule them on your calendar
             </Text>
             
             {data.tasks.map((task) => (
@@ -247,16 +335,31 @@ export default function DailyMeezeScreen() {
                 <View style={styles.taskMainRow}>
                   <View style={styles.taskContent}>
                     <Text style={styles.taskText}>{task.text}</Text>
-                    <View style={[
-                      styles.taskTypeBadge,
-                      { backgroundColor: task.type === 'process' ? colors.primary : colors.accent }
-                    ]}>
-                      <Text style={styles.taskTypeText}>
-                        {task.type === 'process' ? '⚙️ Process' : '🎨 Immersive'}
-                      </Text>
+                    <View style={styles.taskBadges}>
+                      <View style={[
+                        styles.taskTypeBadge,
+                        { backgroundColor: task.type === 'process' ? colors.primary : colors.accent }
+                      ]}>
+                        <Text style={styles.taskTypeText}>
+                          {task.type === 'process' ? '⚙️ Process' : '🎨 Immersive'}
+                        </Text>
+                      </View>
+                      {task.scheduledTime && (
+                        <View style={[styles.taskTypeBadge, { backgroundColor: colors.success }]}>
+                          <Text style={styles.taskTypeText}>
+                            🕐 {task.scheduledTime}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                   <View style={styles.taskActions}>
+                    <Pressable
+                      style={styles.taskActionButton}
+                      onPress={() => openScheduleModal(task)}
+                    >
+                      <IconSymbol name="clock" color={colors.accent} size={20} />
+                    </Pressable>
                     <Pressable
                       style={styles.taskActionButton}
                       onPress={() => openMiniTaskModal(task)}
@@ -381,8 +484,53 @@ export default function DailyMeezeScreen() {
                 </Pressable>
               </View>
 
+              <Text style={styles.modalLabel}>Schedule Time (Optional):</Text>
+              <TextInput
+                style={commonStyles.input}
+                placeholder="e.g., 09:00, 14:30"
+                placeholderTextColor={colors.textSecondary}
+                value={scheduledTime}
+                onChangeText={setScheduledTime}
+              />
+
               <Pressable style={buttonStyles.primary} onPress={addTask}>
                 <Text style={buttonStyles.text}>Add Task</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Schedule Time Modal */}
+        <Modal
+          visible={showScheduleModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowScheduleModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={commonStyles.title}>Schedule Task</Text>
+                <Pressable onPress={() => setShowScheduleModal(false)}>
+                  <IconSymbol name="xmark" color={colors.text} size={24} />
+                </Pressable>
+              </View>
+
+              {selectedTask && (
+                <Text style={styles.selectedTaskText}>{selectedTask.text}</Text>
+              )}
+
+              <Text style={styles.modalLabel}>Time:</Text>
+              <TextInput
+                style={commonStyles.input}
+                placeholder="e.g., 09:00, 14:30"
+                placeholderTextColor={colors.textSecondary}
+                value={scheduledTime}
+                onChangeText={setScheduledTime}
+              />
+
+              <Pressable style={buttonStyles.primary} onPress={saveScheduledTime}>
+                <Text style={buttonStyles.text}>Save Time</Text>
               </Pressable>
             </View>
           </View>
@@ -451,7 +599,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
     padding: 16,
     backgroundColor: colors.card,
     borderRadius: 12,
@@ -463,6 +611,53 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginLeft: 12,
+  },
+  quoteCard: {
+    backgroundColor: colors.highlight,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  quoteText: {
+    flex: 1,
+    fontSize: 16,
+    fontStyle: 'italic',
+    color: colors.text,
+    lineHeight: 24,
+  },
+  contextTabs: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 4,
+    gap: 8,
+  },
+  contextTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    gap: 8,
+  },
+  contextTabActive: {
+    backgroundColor: colors.primary,
+  },
+  contextTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  contextTabTextActive: {
+    color: '#ffffff',
   },
   taskHeader: {
     flexDirection: 'row',
@@ -500,11 +695,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 8,
   },
+  taskBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   taskTypeBadge: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    alignSelf: 'flex-start',
   },
   taskTypeText: {
     fontSize: 12,
