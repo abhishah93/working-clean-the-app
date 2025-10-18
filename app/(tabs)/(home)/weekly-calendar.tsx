@@ -10,8 +10,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 interface CalendarEvent {
   id: string;
   dayOfWeek: number; // 0 = Sunday, 6 = Saturday
-  time: string; // HH:mm format
-  duration: number; // in minutes
+  startTime: string; // HH:mm format (24-hour)
+  endTime: string; // HH:mm format (24-hour)
   title: string;
   description: string;
   type?: 'process' | 'immersive';
@@ -25,25 +25,24 @@ export default function WeeklyCalendarScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [selectedDay, setSelectedDay] = useState(0);
-  const [selectedTime, setSelectedTime] = useState(new Date());
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [startTime, setStartTime] = useState(new Date());
+  const [endTime, setEndTime] = useState(new Date());
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventType, setEventType] = useState<'process' | 'immersive'>('process');
-  const [eventDuration, setEventDuration] = useState(30);
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
   const [selectedWeek, setSelectedWeek] = useState(0);
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  // Generate time slots in 30-minute increments with AM/PM
+  // Generate time slots in 15-minute increments
   const generateTimeSlots = () => {
     const slots: string[] = [];
     for (let hour = 0; hour < 24; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
-        const period = hour >= 12 ? 'PM' : 'AM';
-        const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-        const timeString = `${displayHour}:${minute.toString().padStart(2, '0')} ${period}`;
+      for (let minute = 0; minute < 60; minute += 15) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
         slots.push(timeString);
       }
     }
@@ -80,19 +79,6 @@ export default function WeeklyCalendarScreen() {
     }
   };
 
-  const convertTo24Hour = (time12h: string): string => {
-    const [time, period] = time12h.split(' ');
-    let [hours, minutes] = time.split(':').map(Number);
-    
-    if (period === 'PM' && hours !== 12) {
-      hours += 12;
-    } else if (period === 'AM' && hours === 12) {
-      hours = 0;
-    }
-    
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  };
-
   const convertTo12Hour = (time24h: string): string => {
     const [hours, minutes] = time24h.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
@@ -100,31 +86,69 @@ export default function WeeklyCalendarScreen() {
     return `${displayHour}:${minutes.toString().padStart(2, '0')} ${period}`;
   };
 
+  const timeToMinutes = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const checkOverlaps = (newEvent: CalendarEvent, excludeId?: string): CalendarEvent[] => {
+    const overlapping: CalendarEvent[] = [];
+    const newStart = timeToMinutes(newEvent.startTime);
+    const newEnd = timeToMinutes(newEvent.endTime);
+
+    events.forEach(event => {
+      if (event.id === excludeId) return;
+      if (event.dayOfWeek !== newEvent.dayOfWeek) return;
+
+      const eventStart = timeToMinutes(event.startTime);
+      const eventEnd = timeToMinutes(event.endTime);
+
+      // Check if times overlap
+      if (
+        (newStart >= eventStart && newStart < eventEnd) ||
+        (newEnd > eventStart && newEnd <= eventEnd) ||
+        (newStart <= eventStart && newEnd >= eventEnd)
+      ) {
+        overlapping.push(event);
+      }
+    });
+
+    return overlapping;
+  };
+
   const openAddEventModal = (day: number, timeSlot: string) => {
     setSelectedDay(day);
-    const time24 = convertTo24Hour(timeSlot);
-    const [hours, minutes] = time24.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours, minutes, 0, 0);
-    setSelectedTime(date);
+    const [hours, minutes] = timeSlot.split(':').map(Number);
+    const start = new Date();
+    start.setHours(hours, minutes, 0, 0);
+    const end = new Date(start);
+    end.setHours(hours + 1, minutes, 0, 0); // Default 1 hour duration
+    
+    setStartTime(start);
+    setEndTime(end);
     setEventTitle('');
     setEventDescription('');
     setEventType('process');
-    setEventDuration(30);
     setEditingEvent(null);
     setModalVisible(true);
   };
 
   const openEditEventModal = (event: CalendarEvent) => {
     setSelectedDay(event.dayOfWeek);
-    const [hours, minutes] = event.time.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours, minutes, 0, 0);
-    setSelectedTime(date);
+    
+    const [startHours, startMinutes] = event.startTime.split(':').map(Number);
+    const start = new Date();
+    start.setHours(startHours, startMinutes, 0, 0);
+    
+    const [endHours, endMinutes] = event.endTime.split(':').map(Number);
+    const end = new Date();
+    end.setHours(endHours, endMinutes, 0, 0);
+    
+    setStartTime(start);
+    setEndTime(end);
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventType(event.type || 'process');
-    setEventDuration(event.duration);
     setEditingEvent(event);
     setModalVisible(true);
   };
@@ -135,28 +159,62 @@ export default function WeeklyCalendarScreen() {
       return;
     }
 
-    const hours = selectedTime.getHours();
-    const minutes = selectedTime.getMinutes();
-    const time24 = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    const startHours = startTime.getHours();
+    const startMinutes = startTime.getMinutes();
+    const startTime24 = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')}`;
+
+    const endHours = endTime.getHours();
+    const endMinutes = endTime.getMinutes();
+    const endTime24 = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+
+    // Validate that end time is after start time
+    if (timeToMinutes(endTime24) <= timeToMinutes(startTime24)) {
+      Alert.alert('Error', 'End time must be after start time');
+      return;
+    }
 
     const newEvent: CalendarEvent = {
       id: editingEvent?.id || Date.now().toString(),
       dayOfWeek: selectedDay,
-      time: time24,
-      duration: eventDuration,
+      startTime: startTime24,
+      endTime: endTime24,
       title: eventTitle,
       description: eventDescription,
       type: eventType,
       context: context,
     };
 
+    // Check for overlaps
+    const overlaps = checkOverlaps(newEvent, editingEvent?.id);
+    
+    if (overlaps.length > 0) {
+      const overlapTitles = overlaps.map(e => `"${e.title}" (${convertTo12Hour(e.startTime)} - ${convertTo12Hour(e.endTime)})`).join('\n');
+      Alert.alert(
+        'Overlap Detected',
+        `This event overlaps with:\n\n${overlapTitles}\n\nDo you want to continue anyway?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Continue',
+            onPress: () => {
+              saveEventConfirmed(newEvent);
+            },
+          },
+        ]
+      );
+    } else {
+      saveEventConfirmed(newEvent);
+    }
+  };
+
+  const saveEventConfirmed = (newEvent: CalendarEvent) => {
     let updatedEvents: CalendarEvent[];
     if (editingEvent) {
       updatedEvents = events.map(e => e.id === editingEvent.id ? newEvent : e);
     } else {
       updatedEvents = [...events, newEvent].sort((a, b) => {
         if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
-        return a.time.localeCompare(b.time);
+        return a.startTime.localeCompare(b.startTime);
       });
     }
 
@@ -189,12 +247,19 @@ export default function WeeklyCalendarScreen() {
   const handleTimeSlotPress = (day: number, timeSlot: string) => {
     if (draggedEvent) {
       // Move the event to the new time and day
-      const time24 = convertTo24Hour(timeSlot);
+      const duration = timeToMinutes(draggedEvent.endTime) - timeToMinutes(draggedEvent.startTime);
+      const newStartMinutes = timeToMinutes(timeSlot);
+      const newEndMinutes = newStartMinutes + duration;
+      
+      const newEndHours = Math.floor(newEndMinutes / 60);
+      const newEndMins = newEndMinutes % 60;
+      const newEndTime = `${newEndHours.toString().padStart(2, '0')}:${newEndMins.toString().padStart(2, '0')}`;
+      
       const updatedEvents = events.map(e => 
-        e.id === draggedEvent.id ? { ...e, dayOfWeek: day, time: time24 } : e
+        e.id === draggedEvent.id ? { ...e, dayOfWeek: day, startTime: timeSlot, endTime: newEndTime } : e
       ).sort((a, b) => {
         if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
-        return a.time.localeCompare(b.time);
+        return a.startTime.localeCompare(b.startTime);
       });
       
       saveEvents(updatedEvents);
@@ -210,23 +275,26 @@ export default function WeeklyCalendarScreen() {
   };
 
   const getEventForTimeSlot = (day: number, timeSlot: string): CalendarEvent | undefined => {
-    const time24 = convertTo24Hour(timeSlot);
+    const slotMinutes = timeToMinutes(timeSlot);
+    
     return events.find(e => {
       if (e.dayOfWeek !== day) return false;
       
-      const [eventHours, eventMinutes] = e.time.split(':').map(Number);
-      const eventStartMinutes = eventHours * 60 + eventMinutes;
+      const eventStartMinutes = timeToMinutes(e.startTime);
+      const eventEndMinutes = timeToMinutes(e.endTime);
       
-      const [slotHours, slotMinutes] = time24.split(':').map(Number);
-      const slotMinutes_total = slotHours * 60 + slotMinutes;
-      
-      return slotMinutes_total >= eventStartMinutes && 
-             slotMinutes_total < eventStartMinutes + e.duration;
+      return slotMinutes >= eventStartMinutes && slotMinutes < eventEndMinutes;
     });
   };
 
-  const isTimeSlotOccupied = (day: number, timeSlot: string): boolean => {
-    return getEventForTimeSlot(day, timeSlot) !== undefined;
+  const isEventStart = (event: CalendarEvent, timeSlot: string): boolean => {
+    return event.startTime === timeSlot;
+  };
+
+  const getEventHeight = (event: CalendarEvent): number => {
+    const duration = timeToMinutes(event.endTime) - timeToMinutes(event.startTime);
+    const slots = duration / 15; // 15-minute slots
+    return slots * 60; // 60px per slot
   };
 
   const linkTasksFromMeezes = async () => {
@@ -263,8 +331,8 @@ export default function WeeklyCalendarScreen() {
               const newEvents: CalendarEvent[] = tasks.map((task, index) => ({
                 id: `linked-${Date.now()}-${index}`,
                 dayOfWeek: 1, // Default to Monday
-                time: '09:00',
-                duration: 60,
+                startTime: '09:00',
+                endTime: '10:00',
                 title: task.text,
                 description: task.type === 'process' ? 'Process Task' : 'Immersive Task',
                 type: task.type,
@@ -274,7 +342,7 @@ export default function WeeklyCalendarScreen() {
               
               const updatedEvents = [...events, ...newEvents].sort((a, b) => {
                 if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
-                return a.time.localeCompare(b.time);
+                return a.startTime.localeCompare(b.startTime);
               });
               
               saveEvents(updatedEvents);
@@ -368,75 +436,80 @@ export default function WeeklyCalendarScreen() {
         <ScrollView 
           horizontal
           showsHorizontalScrollIndicator={true}
-          contentContainerStyle={styles.scrollContent}
+          style={styles.horizontalScroll}
         >
-          <View style={styles.calendarGrid}>
-            {/* Header Row */}
-            <View style={styles.headerRow}>
-              <View style={styles.timeColumn}>
-                <Text style={styles.headerText}>Time</Text>
+          <ScrollView
+            showsVerticalScrollIndicator={true}
+            style={styles.verticalScroll}
+          >
+            <View style={styles.calendarGrid}>
+              {/* Header Row */}
+              <View style={styles.headerRow}>
+                <View style={styles.timeColumn}>
+                  <Text style={styles.headerText}>Time</Text>
+                </View>
+                {daysOfWeek.map((day, index) => (
+                  <View key={index} style={styles.dayHeaderColumn}>
+                    <Text style={styles.dayHeaderText}>{day}</Text>
+                  </View>
+                ))}
               </View>
-              {daysOfWeek.map((day, index) => (
-                <View key={index} style={styles.dayHeaderColumn}>
-                  <Text style={styles.dayHeaderText}>{day}</Text>
+
+              {/* Time Slots */}
+              {timeSlots.map((timeSlot, timeIndex) => (
+                <View key={timeIndex} style={styles.timeRow}>
+                  <View style={styles.timeColumn}>
+                    <Text style={styles.timeText}>{convertTo12Hour(timeSlot)}</Text>
+                  </View>
+                  {daysOfWeek.map((day, dayIndex) => {
+                    const event = getEventForTimeSlot(dayIndex, timeSlot);
+                    const isBeingMoved = draggedEvent?.id === event?.id;
+                    const isStart = event && isEventStart(event, timeSlot);
+                    const isOccupied = event !== undefined;
+                    
+                    return (
+                      <Pressable
+                        key={dayIndex}
+                        style={[
+                          styles.dayColumn,
+                          isOccupied && styles.dayColumnOccupied,
+                          isBeingMoved && styles.dayColumnBeingMoved,
+                          draggedEvent && !isOccupied && styles.dayColumnDropTarget,
+                        ]}
+                        onPress={() => handleTimeSlotPress(dayIndex, timeSlot)}
+                        onLongPress={() => event && isStart && handleLongPress(event)}
+                      >
+                        {event && isStart ? (
+                          <View style={[styles.eventCard, { height: getEventHeight(event) }]}>
+                            <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
+                            <Text style={styles.eventTime}>
+                              {convertTo12Hour(event.startTime)} - {convertTo12Hour(event.endTime)}
+                            </Text>
+                            {event.type && (
+                              <View style={[
+                                styles.eventTypeBadge,
+                                { backgroundColor: event.type === 'process' ? colors.primary : colors.accent }
+                              ]}>
+                                <Text style={styles.eventTypeText}>
+                                  {event.type === 'process' ? '⚙️' : '🎨'}
+                                </Text>
+                              </View>
+                            )}
+                            <Pressable
+                              style={styles.deleteButton}
+                              onPress={() => deleteEvent(event.id)}
+                            >
+                              <IconSymbol name="trash" color={colors.secondary} size={14} />
+                            </Pressable>
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
                 </View>
               ))}
             </View>
-
-            {/* Time Slots */}
-            {timeSlots.map((timeSlot, timeIndex) => (
-              <View key={timeIndex} style={styles.timeRow}>
-                <View style={styles.timeColumn}>
-                  <Text style={styles.timeText}>{timeSlot}</Text>
-                </View>
-                {daysOfWeek.map((day, dayIndex) => {
-                  const event = getEventForTimeSlot(dayIndex, timeSlot);
-                  const isBeingMoved = draggedEvent?.id === event?.id;
-                  const isOccupied = isTimeSlotOccupied(dayIndex, timeSlot);
-                  const isEventStart = event && convertTo12Hour(event.time) === timeSlot;
-                  
-                  return (
-                    <Pressable
-                      key={dayIndex}
-                      style={[
-                        styles.dayColumn,
-                        isEventStart && styles.dayColumnWithEvent,
-                        isBeingMoved && styles.dayColumnBeingMoved,
-                        draggedEvent && !isOccupied && styles.dayColumnDropTarget,
-                      ]}
-                      onPress={() => handleTimeSlotPress(dayIndex, timeSlot)}
-                      onLongPress={() => event && isEventStart && handleLongPress(event)}
-                    >
-                      {event && isEventStart ? (
-                        <View style={styles.eventCard}>
-                          <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-                          <Text style={styles.eventDuration}>{event.duration} min</Text>
-                          {event.type && (
-                            <View style={[
-                              styles.eventTypeBadge,
-                              { backgroundColor: event.type === 'process' ? colors.primary : colors.accent }
-                            ]}>
-                              <Text style={styles.eventTypeText}>
-                                {event.type === 'process' ? '⚙️' : '🎨'}
-                              </Text>
-                            </View>
-                          )}
-                          <Pressable
-                            style={styles.deleteButton}
-                            onPress={() => deleteEvent(event.id)}
-                          >
-                            <IconSymbol name="trash" color={colors.secondary} size={14} />
-                          </Pressable>
-                        </View>
-                      ) : isOccupied ? (
-                        <View style={styles.occupiedSlot} />
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
+          </ScrollView>
         </ScrollView>
 
         {/* Add/Edit Event Modal */}
@@ -448,116 +521,120 @@ export default function WeeklyCalendarScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={commonStyles.title}>
-                  {editingEvent ? 'Edit Event' : 'Add Event'}
-                </Text>
-                <Pressable onPress={() => setModalVisible(false)}>
-                  <IconSymbol name="xmark" color={colors.text} size={24} />
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalHeader}>
+                  <Text style={commonStyles.title}>
+                    {editingEvent ? 'Edit Event' : 'Add Event'}
+                  </Text>
+                  <Pressable onPress={() => setModalVisible(false)}>
+                    <IconSymbol name="xmark" color={colors.text} size={24} />
+                  </Pressable>
+                </View>
+
+                <Text style={styles.modalLabel}>Day: {daysOfWeek[selectedDay]}</Text>
+                
+                <Text style={styles.modalLabel}>Start Time:</Text>
+                <Pressable
+                  style={styles.timePickerButton}
+                  onPress={() => setShowStartTimePicker(true)}
+                >
+                  <Text style={styles.timePickerText}>
+                    {convertTo12Hour(`${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`)}
+                  </Text>
                 </Pressable>
-              </View>
 
-              <Text style={styles.modalLabel}>Day: {daysOfWeek[selectedDay]}</Text>
-              
-              <Text style={styles.modalLabel}>Time:</Text>
-              <Pressable
-                style={styles.timePickerButton}
-                onPress={() => setShowTimePicker(true)}
-              >
-                <Text style={styles.timePickerText}>
-                  {convertTo12Hour(`${selectedTime.getHours().toString().padStart(2, '0')}:${selectedTime.getMinutes().toString().padStart(2, '0')}`)}
-                </Text>
-              </Pressable>
+                {showStartTimePicker && (
+                  <DateTimePicker
+                    value={startTime}
+                    mode="time"
+                    is24Hour={false}
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowStartTimePicker(Platform.OS === 'ios');
+                      if (date) setStartTime(date);
+                    }}
+                  />
+                )}
 
-              {showTimePicker && (
-                <DateTimePicker
-                  value={selectedTime}
-                  mode="time"
-                  is24Hour={false}
-                  display="default"
-                  onChange={(event, date) => {
-                    setShowTimePicker(Platform.OS === 'ios');
-                    if (date) setSelectedTime(date);
-                  }}
+                <Text style={styles.modalLabel}>End Time:</Text>
+                <Pressable
+                  style={styles.timePickerButton}
+                  onPress={() => setShowEndTimePicker(true)}
+                >
+                  <Text style={styles.timePickerText}>
+                    {convertTo12Hour(`${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`)}
+                  </Text>
+                </Pressable>
+
+                {showEndTimePicker && (
+                  <DateTimePicker
+                    value={endTime}
+                    mode="time"
+                    is24Hour={false}
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowEndTimePicker(Platform.OS === 'ios');
+                      if (date) setEndTime(date);
+                    }}
+                  />
+                )}
+
+                <TextInput
+                  style={commonStyles.input}
+                  placeholder="Event Title"
+                  placeholderTextColor={colors.textSecondary}
+                  value={eventTitle}
+                  onChangeText={setEventTitle}
                 />
-              )}
 
-              <TextInput
-                style={commonStyles.input}
-                placeholder="Event Title"
-                placeholderTextColor={colors.textSecondary}
-                value={eventTitle}
-                onChangeText={setEventTitle}
-              />
+                <TextInput
+                  style={commonStyles.textArea}
+                  multiline
+                  numberOfLines={3}
+                  placeholder="Description (optional)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={eventDescription}
+                  onChangeText={setEventDescription}
+                />
 
-              <TextInput
-                style={commonStyles.textArea}
-                multiline
-                numberOfLines={3}
-                placeholder="Description (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={eventDescription}
-                onChangeText={setEventDescription}
-              />
-
-              <Text style={styles.modalLabel}>Duration (minutes):</Text>
-              <View style={styles.durationSelector}>
-                {[15, 30, 45, 60, 90, 120].map((duration) => (
+                <Text style={styles.modalLabel}>Task Type:</Text>
+                <View style={styles.typeSelector}>
                   <Pressable
-                    key={duration}
                     style={[
-                      styles.durationOption,
-                      eventDuration === duration && styles.durationOptionActive
+                      styles.typeOption,
+                      eventType === 'process' && styles.typeOptionActive
                     ]}
-                    onPress={() => setEventDuration(duration)}
+                    onPress={() => setEventType('process')}
                   >
                     <Text style={[
-                      styles.durationOptionText,
-                      eventDuration === duration && styles.durationOptionTextActive
+                      styles.typeOptionText,
+                      eventType === 'process' && styles.typeOptionTextActive
                     ]}>
-                      {duration}
+                      ⚙️ Process
                     </Text>
                   </Pressable>
-                ))}
-              </View>
+                  <Pressable
+                    style={[
+                      styles.typeOption,
+                      eventType === 'immersive' && styles.typeOptionActive
+                    ]}
+                    onPress={() => setEventType('immersive')}
+                  >
+                    <Text style={[
+                      styles.typeOptionText,
+                      eventType === 'immersive' && styles.typeOptionTextActive
+                    ]}>
+                      🎨 Immersive
+                    </Text>
+                  </Pressable>
+                </View>
 
-              <Text style={styles.modalLabel}>Task Type:</Text>
-              <View style={styles.typeSelector}>
-                <Pressable
-                  style={[
-                    styles.typeOption,
-                    eventType === 'process' && styles.typeOptionActive
-                  ]}
-                  onPress={() => setEventType('process')}
-                >
-                  <Text style={[
-                    styles.typeOptionText,
-                    eventType === 'process' && styles.typeOptionTextActive
-                  ]}>
-                    ⚙️ Process
+                <Pressable style={buttonStyles.primary} onPress={saveEvent}>
+                  <Text style={buttonStyles.text}>
+                    {editingEvent ? 'Update Event' : 'Add Event'}
                   </Text>
                 </Pressable>
-                <Pressable
-                  style={[
-                    styles.typeOption,
-                    eventType === 'immersive' && styles.typeOptionActive
-                  ]}
-                  onPress={() => setEventType('immersive')}
-                >
-                  <Text style={[
-                    styles.typeOptionText,
-                    eventType === 'immersive' && styles.typeOptionTextActive
-                  ]}>
-                    🎨 Immersive
-                  </Text>
-                </Pressable>
-              </View>
-
-              <Pressable style={buttonStyles.primary} onPress={saveEvent}>
-                <Text style={buttonStyles.text}>
-                  {editingEvent ? 'Update Event' : 'Add Event'}
-                </Text>
-              </Pressable>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -618,12 +695,15 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     flex: 1,
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  horizontalScroll: {
+    flex: 1,
+  },
+  verticalScroll: {
+    flex: 1,
   },
   calendarGrid: {
-    minWidth: '100%',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   headerRow: {
     flexDirection: 'row',
@@ -659,7 +739,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   timeText: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -672,10 +752,11 @@ const styles = StyleSheet.create({
     padding: 4,
     borderWidth: 1,
     borderColor: colors.border,
+    position: 'relative',
   },
-  dayColumnWithEvent: {
-    backgroundColor: colors.highlight,
-    borderColor: colors.accent,
+  dayColumnOccupied: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
   },
   dayColumnBeingMoved: {
     opacity: 0.5,
@@ -688,24 +769,33 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   eventCard: {
-    flex: 1,
-    justifyContent: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.highlight,
+    borderRadius: 6,
+    padding: 8,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    minHeight: 60,
   },
   eventTitle: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  eventDuration: {
+  eventTime: {
     fontSize: 10,
     color: colors.primary,
     fontWeight: '600',
+    marginBottom: 4,
   },
   eventTypeBadge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
+    top: 4,
+    right: 4,
     width: 20,
     height: 20,
     borderRadius: 10,
@@ -717,14 +807,9 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
+    bottom: 4,
+    right: 4,
     padding: 2,
-  },
-  occupiedSlot: {
-    flex: 1,
-    backgroundColor: colors.highlight,
-    opacity: 0.3,
   },
   modalOverlay: {
     flex: 1,
@@ -752,6 +837,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
+    marginTop: 8,
   },
   timePickerButton: {
     backgroundColor: colors.highlight,
@@ -766,33 +852,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
     textAlign: 'center',
-  },
-  durationSelector: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  durationOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.border,
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  durationOptionActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.highlight,
-  },
-  durationOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  durationOptionTextActive: {
-    color: colors.primary,
   },
   typeSelector: {
     flexDirection: 'row',

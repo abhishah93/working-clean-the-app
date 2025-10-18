@@ -21,7 +21,6 @@ interface MiniTask {
 }
 
 interface WeeklyMeezeData {
-  accomplishments: string;
   topGoals: string[];
   frontBurners: string;
   backBurners: string;
@@ -38,7 +37,6 @@ export default function WeeklyMeezeScreen() {
   
   const [context, setContext] = useState<'work' | 'home'>('work');
   const [data, setData] = useState<WeeklyMeezeData>({
-    accomplishments: '',
     topGoals: ['', '', ''],
     frontBurners: '',
     backBurners: '',
@@ -67,7 +65,6 @@ export default function WeeklyMeezeScreen() {
         console.log('Loaded weekly meeze data for', context, startDate);
       } else {
         setData({
-          accomplishments: '',
           topGoals: ['', '', ''],
           frontBurners: '',
           backBurners: '',
@@ -247,22 +244,6 @@ export default function WeeklyMeezeScreen() {
                 Home
               </Text>
             </Pressable>
-          </View>
-
-          <View style={commonStyles.card}>
-            <Text style={commonStyles.sectionTitle}>🎯 What I Want to Accomplish</Text>
-            <Text style={commonStyles.textSecondary}>
-              What specific goals do you want to achieve this week?
-            </Text>
-            <TextInput
-              style={commonStyles.textArea}
-              multiline
-              numberOfLines={4}
-              placeholder="Write your goals for this week..."
-              placeholderTextColor={colors.textSecondary}
-              value={data.accomplishments}
-              onChangeText={(text) => setData({ ...data, accomplishments: text })}
-            />
           </View>
 
           <View style={commonStyles.card}>

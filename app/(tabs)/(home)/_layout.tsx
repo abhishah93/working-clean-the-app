@@ -37,13 +37,7 @@ export default function HomeLayout() {
           headerShown: true,
         }} 
       />
-      <Stack.Screen 
-        name="daily-calendar" 
-        options={{ 
-          title: 'Daily Calendar',
-          headerShown: true,
-        }} 
-      />
+
       <Stack.Screen 
         name="weekly-calendar" 
         options={{ 

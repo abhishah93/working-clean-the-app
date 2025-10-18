@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Stack, router } from "expo-router";
-import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Modal, Platform, Alert } from "react-native";
+import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Modal, Platform, Alert, AppState } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import { notificationService } from "@/utils/notificationService";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Timer {
   id: string;
@@ -13,6 +14,7 @@ interface Timer {
   remaining: number;
   isRunning: boolean;
   notificationId?: string;
+  startedAt?: number; // timestamp when timer started
 }
 
 export default function TimersScreen() {
@@ -21,9 +23,32 @@ export default function TimersScreen() {
   const [timerName, setTimerName] = useState('');
   const [timerMinutes, setTimerMinutes] = useState('25');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     initializeNotifications();
+    loadTimers();
+
+    // Handle app state changes for background timer support
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App has come to foreground, sync timers
+        console.log('App came to foreground, syncing timers');
+        syncTimersAfterBackground();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    // Save timers whenever they change
+    saveTimers();
+
+    // Update running timers every second
     const interval = setInterval(() => {
       setTimers(prevTimers =>
         prevTimers.map(timer => {
@@ -32,7 +57,7 @@ export default function TimersScreen() {
             if (newRemaining === 0) {
               // Timer completed
               console.log('Timer completed:', timer.name);
-              return { ...timer, remaining: 0, isRunning: false };
+              return { ...timer, remaining: 0, isRunning: false, startedAt: undefined };
             }
             return { ...timer, remaining: newRemaining };
           }
@@ -42,7 +67,59 @@ export default function TimersScreen() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [timers.length]);
+
+  const loadTimers = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('timers');
+      if (stored) {
+        const loadedTimers = JSON.parse(stored);
+        // Sync any running timers that were running in background
+        const syncedTimers = loadedTimers.map((timer: Timer) => {
+          if (timer.isRunning && timer.startedAt) {
+            const elapsed = Math.floor((Date.now() - timer.startedAt) / 1000);
+            const newRemaining = Math.max(0, timer.remaining - elapsed);
+            return {
+              ...timer,
+              remaining: newRemaining,
+              isRunning: newRemaining > 0,
+            };
+          }
+          return timer;
+        });
+        setTimers(syncedTimers);
+        console.log('Loaded and synced timers');
+      }
+    } catch (error) {
+      console.error('Error loading timers:', error);
+    }
+  };
+
+  const saveTimers = async () => {
+    try {
+      await AsyncStorage.setItem('timers', JSON.stringify(timers));
+    } catch (error) {
+      console.error('Error saving timers:', error);
+    }
+  };
+
+  const syncTimersAfterBackground = () => {
+    setTimers(prevTimers =>
+      prevTimers.map(timer => {
+        if (timer.isRunning && timer.startedAt) {
+          const elapsed = Math.floor((Date.now() - timer.startedAt) / 1000);
+          const newRemaining = Math.max(0, timer.remaining - elapsed);
+          return {
+            ...timer,
+            remaining: newRemaining,
+            isRunning: newRemaining > 0,
+            startedAt: newRemaining > 0 ? Date.now() : undefined,
+          };
+        }
+        return timer;
+      })
+    );
+  };
 
   const initializeNotifications = async () => {
     const initialized = await notificationService.initialize();
@@ -95,7 +172,7 @@ export default function TimersScreen() {
                 if (notificationId) {
                   console.log('Scheduled notification for timer:', timer.name);
                   setTimers(prev => prev.map(t => 
-                    t.id === id ? { ...t, notificationId } : t
+                    t.id === id ? { ...t, notificationId, startedAt: Date.now() } : t
                   ));
                 }
               });
@@ -104,7 +181,11 @@ export default function TimersScreen() {
             notificationService.cancelNotification(timer.notificationId);
           }
           
-          return { ...timer, isRunning: newIsRunning };
+          return { 
+            ...timer, 
+            isRunning: newIsRunning,
+            startedAt: newIsRunning ? Date.now() : undefined,
+          };
         }
         return timer;
       })
@@ -123,6 +204,7 @@ export default function TimersScreen() {
             remaining: timer.duration,
             isRunning: false,
             notificationId: undefined,
+            startedAt: undefined,
           };
         }
         return timer;
@@ -175,7 +257,7 @@ export default function TimersScreen() {
             {notificationsEnabled && (
               <View style={styles.notificationBadge}>
                 <IconSymbol name="bell.fill" color={colors.success} size={16} />
-                <Text style={styles.notificationText}>Notifications enabled</Text>
+                <Text style={styles.notificationText}>Background timers enabled</Text>
               </View>
             )}
           </View>

@@ -193,22 +193,6 @@ export default function HomeScreen() {
 
             <Pressable
               style={styles.quickAccessCard}
-              onPress={() => router.push('/(tabs)/(home)/daily-calendar')}
-            >
-              <View style={[styles.quickAccessIcon, { backgroundColor: '#e67e22' }]}>
-                <IconSymbol name="calendar" color="#ffffff" size={24} />
-              </View>
-              <View style={styles.quickAccessContent}>
-                <Text style={styles.quickAccessTitle}>Daily Calendar</Text>
-                <Text style={commonStyles.textSecondary}>
-                  Schedule activities in 5-minute blocks
-                </Text>
-              </View>
-              <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
-            </Pressable>
-
-            <Pressable
-              style={styles.quickAccessCard}
               onPress={() => router.push('/(tabs)/(home)/routines')}
             >
               <View style={[styles.quickAccessIcon, { backgroundColor: '#9b59b6' }]}>
