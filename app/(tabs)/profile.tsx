@@ -2,7 +2,7 @@
 import React from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { IconSymbol } from "@/components/IconSymbol";
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Platform } from "react-native";
 import { colors, commonStyles } from "@/styles/commonStyles";
 
 export default function ProfileScreen() {
@@ -79,10 +79,14 @@ export default function ProfileScreen() {
           <Text style={commonStyles.sectionTitle}>App Features</Text>
           <Text style={commonStyles.text}>
             - Daily and Weekly Meeze planning{'\n'}
-            - 30-minute block calendar scheduling{'\n'}
+            - Weekly calendar with AM/PM scheduling{'\n'}
+            - Daily calendar with 5-minute blocks{'\n'}
+            - Drag and drop task rearrangement{'\n'}
             - Honesty log for reflections{'\n'}
-            - Built-in timers for focused work{'\n'}
-            - Front and back burner project tracking
+            - Built-in timers with notifications{'\n'}
+            - Habit tracker with scrolling view{'\n'}
+            - Front and back burner project tracking{'\n'}
+            - Link tasks from meezes to calendar
           </Text>
         </View>
       </ScrollView>
@@ -93,7 +97,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
-    paddingBottom: Platform.OS !== 'ios' ? 100 : 16,
+    paddingBottom: 16,
   },
   header: {
     alignItems: 'center',

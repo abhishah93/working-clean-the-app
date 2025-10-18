@@ -45,6 +45,13 @@ export default function HomeLayout() {
         }} 
       />
       <Stack.Screen 
+        name="weekly-calendar" 
+        options={{ 
+          title: 'Weekly Calendar',
+          headerShown: true,
+        }} 
+      />
+      <Stack.Screen 
         name="honesty-log" 
         options={{ 
           title: 'Honesty Log',
@@ -55,6 +62,20 @@ export default function HomeLayout() {
         name="timers" 
         options={{ 
           title: 'Timers',
+          headerShown: true,
+        }} 
+      />
+      <Stack.Screen 
+        name="habit-tracker" 
+        options={{ 
+          title: 'Habit Tracker',
+          headerShown: true,
+        }} 
+      />
+      <Stack.Screen 
+        name="routines" 
+        options={{ 
+          title: 'Routines',
           headerShown: true,
         }} 
       />

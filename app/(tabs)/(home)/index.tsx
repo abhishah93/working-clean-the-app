@@ -177,9 +177,25 @@ export default function HomeScreen() {
             
             <Pressable
               style={styles.quickAccessCard}
-              onPress={() => router.push('/(tabs)/(home)/daily-calendar')}
+              onPress={() => router.push('/(tabs)/(home)/weekly-calendar')}
             >
               <View style={[styles.quickAccessIcon, { backgroundColor: colors.primary }]}>
+                <IconSymbol name="calendar" color="#ffffff" size={24} />
+              </View>
+              <View style={styles.quickAccessContent}>
+                <Text style={styles.quickAccessTitle}>Weekly Calendar</Text>
+                <Text style={commonStyles.textSecondary}>
+                  Schedule activities across the week with AM/PM time
+                </Text>
+              </View>
+              <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
+            </Pressable>
+
+            <Pressable
+              style={styles.quickAccessCard}
+              onPress={() => router.push('/(tabs)/(home)/daily-calendar')}
+            >
+              <View style={[styles.quickAccessIcon, { backgroundColor: '#e67e22' }]}>
                 <IconSymbol name="calendar" color="#ffffff" size={24} />
               </View>
               <View style={styles.quickAccessContent}>
@@ -264,7 +280,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
-    paddingBottom: Platform.OS !== 'ios' ? 100 : 16,
+    paddingBottom: 16,
   },
   header: {
     marginBottom: 24,

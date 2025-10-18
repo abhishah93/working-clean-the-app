@@ -239,102 +239,103 @@ export default function HabitTrackerScreen() {
         }}
       />
       <View style={commonStyles.container}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <IconSymbol name="checkmark.circle.fill" color={colors.success} size={32} />
-            <Text style={commonStyles.title}>Habit Tracker</Text>
-            <Text style={commonStyles.textSecondary}>
-              Build consistency and track your progress
-            </Text>
-          </View>
+        <View style={styles.header}>
+          <IconSymbol name="checkmark.circle.fill" color={colors.success} size={32} />
+          <Text style={commonStyles.title}>Habit Tracker</Text>
+          <Text style={commonStyles.textSecondary}>
+            Build consistency and track your progress
+          </Text>
+        </View>
 
-          {/* Context Tabs */}
-          <View style={styles.contextTabs}>
-            <Pressable
-              style={[
-                styles.contextTab,
-                context === 'work' && styles.contextTabActive
-              ]}
-              onPress={() => setContext('work')}
-            >
-              <IconSymbol 
-                name="briefcase.fill" 
-                color={context === 'work' ? '#ffffff' : colors.textSecondary} 
-                size={20} 
-              />
-              <Text style={[
-                styles.contextTabText,
-                context === 'work' && styles.contextTabTextActive
-              ]}>
-                Work
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.contextTab,
-                context === 'home' && styles.contextTabActive
-              ]}
-              onPress={() => setContext('home')}
-            >
-              <IconSymbol 
-                name="house.fill" 
-                color={context === 'home' ? '#ffffff' : colors.textSecondary} 
-                size={20} 
-              />
-              <Text style={[
-                styles.contextTabText,
-                context === 'home' && styles.contextTabTextActive
-              ]}>
-                Home
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Week Navigation */}
-          <View style={styles.weekNavigation}>
-            <Pressable
-              style={styles.weekNavButton}
-              onPress={() => setSelectedWeek(selectedWeek - 1)}
-            >
-              <IconSymbol name="chevron.left" color={colors.primary} size={24} />
-            </Pressable>
-            <Text style={styles.weekLabel}>
-              {selectedWeek === 0 ? 'This Week' : `${Math.abs(selectedWeek)} week${Math.abs(selectedWeek) !== 1 ? 's' : ''} ${selectedWeek < 0 ? 'ago' : 'ahead'}`}
-            </Text>
-            <Pressable
-              style={styles.weekNavButton}
-              onPress={() => setSelectedWeek(selectedWeek + 1)}
-              disabled={selectedWeek >= 0}
-            >
-              <IconSymbol 
-                name="chevron.right" 
-                color={selectedWeek >= 0 ? colors.textSecondary : colors.primary} 
-                size={24} 
-              />
-            </Pressable>
-          </View>
-
-          <Pressable 
-            style={[buttonStyles.primary, { marginBottom: 24 }]} 
-            onPress={() => setShowAddModal(true)}
+        {/* Context Tabs */}
+        <View style={styles.contextTabs}>
+          <Pressable
+            style={[
+              styles.contextTab,
+              context === 'work' && styles.contextTabActive
+            ]}
+            onPress={() => setContext('work')}
           >
-            <IconSymbol name="plus" color="#ffffff" size={20} />
-            <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Add New Habit</Text>
+            <IconSymbol 
+              name="briefcase.fill" 
+              color={context === 'work' ? '#ffffff' : colors.textSecondary} 
+              size={20} 
+            />
+            <Text style={[
+              styles.contextTabText,
+              context === 'work' && styles.contextTabTextActive
+            ]}>
+              Work
+            </Text>
           </Pressable>
+          <Pressable
+            style={[
+              styles.contextTab,
+              context === 'home' && styles.contextTabActive
+            ]}
+            onPress={() => setContext('home')}
+          >
+            <IconSymbol 
+              name="house.fill" 
+              color={context === 'home' ? '#ffffff' : colors.textSecondary} 
+              size={20} 
+            />
+            <Text style={[
+              styles.contextTabText,
+              context === 'home' && styles.contextTabTextActive
+            ]}>
+              Home
+            </Text>
+          </Pressable>
+        </View>
 
-          {habits.length === 0 ? (
-            <View style={styles.emptyState}>
-              <IconSymbol name="checkmark.circle" color={colors.textSecondary} size={64} />
-              <Text style={styles.emptyStateText}>No habits yet</Text>
-              <Text style={commonStyles.textSecondary}>
-                Start tracking your first habit today
-              </Text>
-            </View>
-          ) : (
-            <>
+        {/* Week Navigation */}
+        <View style={styles.weekNavigation}>
+          <Pressable
+            style={styles.weekNavButton}
+            onPress={() => setSelectedWeek(selectedWeek - 1)}
+          >
+            <IconSymbol name="chevron.left" color={colors.primary} size={24} />
+          </Pressable>
+          <Text style={styles.weekLabel}>
+            {selectedWeek === 0 ? 'This Week' : `${Math.abs(selectedWeek)} week${Math.abs(selectedWeek) !== 1 ? 's' : ''} ${selectedWeek < 0 ? 'ago' : 'ahead'}`}
+          </Text>
+          <Pressable
+            style={styles.weekNavButton}
+            onPress={() => setSelectedWeek(selectedWeek + 1)}
+            disabled={selectedWeek >= 0}
+          >
+            <IconSymbol 
+              name="chevron.right" 
+              color={selectedWeek >= 0 ? colors.textSecondary : colors.primary} 
+              size={24} 
+            />
+          </Pressable>
+        </View>
+
+        <Pressable 
+          style={[buttonStyles.primary, { marginHorizontal: 16, marginBottom: 16 }]} 
+          onPress={() => setShowAddModal(true)}
+        >
+          <IconSymbol name="plus" color="#ffffff" size={20} />
+          <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Add New Habit</Text>
+        </Pressable>
+
+        {habits.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol name="checkmark.circle" color={colors.textSecondary} size={64} />
+            <Text style={styles.emptyStateText}>No habits yet</Text>
+            <Text style={commonStyles.textSecondary}>
+              Start tracking your first habit today
+            </Text>
+          </View>
+        ) : (
+          <ScrollView 
+            horizontal
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.scrollContent}
+          >
+            <View style={styles.tableContainer}>
               {/* Week Header */}
               <View style={styles.weekHeader}>
                 <View style={styles.habitNameColumn}>
@@ -395,9 +396,9 @@ export default function HabitTrackerScreen() {
                   })}
                 </View>
               ))}
-            </>
-          )}
-        </ScrollView>
+            </View>
+          </ScrollView>
+        )}
 
         {/* Add Habit Modal */}
         <Modal
@@ -445,16 +446,14 @@ export default function HabitTrackerScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    padding: 16,
-    paddingBottom: Platform.OS !== 'ios' ? 100 : 16,
-  },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    padding: 16,
+    paddingTop: 24,
   },
   contextTabs: {
     flexDirection: 'row',
+    marginHorizontal: 16,
     marginBottom: 16,
     backgroundColor: colors.card,
     borderRadius: 8,
@@ -489,6 +488,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 8,
     padding: 12,
+    marginHorizontal: 16,
     marginBottom: 16,
   },
   weekNavButton: {
@@ -510,6 +510,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  tableContainer: {
+    minWidth: '100%',
+  },
   weekHeader: {
     flexDirection: 'row',
     backgroundColor: colors.card,
@@ -523,17 +530,17 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   habitNameColumn: {
-    width: 120,
+    width: 140,
     marginRight: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   dayColumn: {
-    flex: 1,
+    width: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 40,
+    marginRight: 4,
   },
   dayLabel: {
     fontSize: 12,
@@ -583,7 +590,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   habitCheckbox: {
-    height: 40,
+    height: 50,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: colors.border,

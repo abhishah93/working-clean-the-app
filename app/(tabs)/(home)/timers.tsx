@@ -4,29 +4,34 @@ import { Stack, router } from "expo-router";
 import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Modal, Platform, Alert } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
+import { notificationService } from "@/utils/notificationService";
 
 interface Timer {
   id: string;
   name: string;
   duration: number; // in seconds
-  remaining: number; // in seconds
+  remaining: number;
   isRunning: boolean;
+  notificationId?: string;
 }
 
 export default function TimersScreen() {
   const [timers, setTimers] = useState<Timer[]>([]);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [timerName, setTimerName] = useState('');
   const [timerMinutes, setTimerMinutes] = useState('25');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   useEffect(() => {
+    initializeNotifications();
     const interval = setInterval(() => {
-      setTimers(prevTimers => 
+      setTimers(prevTimers =>
         prevTimers.map(timer => {
           if (timer.isRunning && timer.remaining > 0) {
             const newRemaining = timer.remaining - 1;
             if (newRemaining === 0) {
-              Alert.alert('Timer Complete!', `${timer.name} has finished`);
+              // Timer completed
+              console.log('Timer completed:', timer.name);
               return { ...timer, remaining: 0, isRunning: false };
             }
             return { ...timer, remaining: newRemaining };
@@ -38,6 +43,17 @@ export default function TimersScreen() {
 
     return () => clearInterval(interval);
   }, []);
+
+  const initializeNotifications = async () => {
+    const initialized = await notificationService.initialize();
+    setNotificationsEnabled(initialized);
+    if (!initialized) {
+      Alert.alert(
+        'Notifications Disabled',
+        'Please enable notifications in your device settings to receive timer alerts.'
+      );
+    }
+  };
 
   const addTimer = () => {
     if (!timerName.trim()) {
@@ -51,56 +67,78 @@ export default function TimersScreen() {
       return;
     }
 
+    const duration = minutes * 60;
     const newTimer: Timer = {
       id: Date.now().toString(),
       name: timerName,
-      duration: minutes * 60,
-      remaining: minutes * 60,
+      duration,
+      remaining: duration,
       isRunning: false,
     };
 
     setTimers([...timers, newTimer]);
-    setModalVisible(false);
     setTimerName('');
     setTimerMinutes('25');
-    console.log('Added new timer:', newTimer.name);
+    setShowAddModal(false);
   };
 
-  const toggleTimer = (id: string) => {
+  const toggleTimer = async (id: string) => {
     setTimers(prevTimers =>
-      prevTimers.map(timer =>
-        timer.id === id ? { ...timer, isRunning: !timer.isRunning } : timer
-      )
+      prevTimers.map(timer => {
+        if (timer.id === id) {
+          const newIsRunning = !timer.isRunning;
+          
+          if (newIsRunning && notificationsEnabled) {
+            // Schedule notification for when timer completes
+            notificationService.scheduleTimerNotification(timer.name, timer.remaining)
+              .then(notificationId => {
+                if (notificationId) {
+                  console.log('Scheduled notification for timer:', timer.name);
+                  setTimers(prev => prev.map(t => 
+                    t.id === id ? { ...t, notificationId } : t
+                  ));
+                }
+              });
+          } else if (!newIsRunning && timer.notificationId) {
+            // Cancel notification if timer is paused
+            notificationService.cancelNotification(timer.notificationId);
+          }
+          
+          return { ...timer, isRunning: newIsRunning };
+        }
+        return timer;
+      })
     );
   };
 
-  const resetTimer = (id: string) => {
+  const resetTimer = async (id: string) => {
     setTimers(prevTimers =>
-      prevTimers.map(timer =>
-        timer.id === id ? { ...timer, remaining: timer.duration, isRunning: false } : timer
-      )
+      prevTimers.map(timer => {
+        if (timer.id === id) {
+          if (timer.notificationId) {
+            notificationService.cancelNotification(timer.notificationId);
+          }
+          return {
+            ...timer,
+            remaining: timer.duration,
+            isRunning: false,
+            notificationId: undefined,
+          };
+        }
+        return timer;
+      })
     );
   };
 
-  const deleteTimer = (id: string) => {
-    Alert.alert(
-      'Delete Timer',
-      'Are you sure you want to delete this timer?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setTimers(prevTimers => prevTimers.filter(timer => timer.id !== id));
-            console.log('Deleted timer');
-          },
-        },
-      ]
-    );
+  const deleteTimer = async (id: string) => {
+    const timer = timers.find(t => t.id === id);
+    if (timer?.notificationId) {
+      await notificationService.cancelNotification(timer.notificationId);
+    }
+    setTimers(timers.filter(t => t.id !== id));
   };
 
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
@@ -111,16 +149,9 @@ export default function TimersScreen() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getProgress = (timer: Timer) => {
+  const getProgress = (timer: Timer): number => {
     return ((timer.duration - timer.remaining) / timer.duration) * 100;
   };
-
-  const presetTimers = [
-    { name: 'Pomodoro', minutes: 25 },
-    { name: 'Short Break', minutes: 5 },
-    { name: 'Long Break', minutes: 15 },
-    { name: 'Deep Work', minutes: 90 },
-  ];
 
   return (
     <>
@@ -137,26 +168,32 @@ export default function TimersScreen() {
         >
           <View style={styles.header}>
             <IconSymbol name="timer" color={colors.secondary} size={32} />
-            <Text style={commonStyles.title}>Built-in Timers</Text>
+            <Text style={commonStyles.title}>Focus Timers</Text>
             <Text style={commonStyles.textSecondary}>
-              Schedule and manage your work sessions
+              Set timers for focused work sessions
             </Text>
+            {notificationsEnabled && (
+              <View style={styles.notificationBadge}>
+                <IconSymbol name="bell.fill" color={colors.success} size={16} />
+                <Text style={styles.notificationText}>Notifications enabled</Text>
+              </View>
+            )}
           </View>
 
           <Pressable 
-            style={[buttonStyles.primary, styles.addButton]}
-            onPress={() => setModalVisible(true)}
+            style={[buttonStyles.primary, { marginBottom: 24 }]} 
+            onPress={() => setShowAddModal(true)}
           >
             <IconSymbol name="plus" color="#ffffff" size={20} />
-            <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Add Timer</Text>
+            <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Add New Timer</Text>
           </Pressable>
 
           {timers.length === 0 ? (
             <View style={styles.emptyState}>
-              <IconSymbol name="timer" color={colors.textSecondary} size={48} />
+              <IconSymbol name="timer" color={colors.textSecondary} size={64} />
               <Text style={styles.emptyStateText}>No timers yet</Text>
               <Text style={commonStyles.textSecondary}>
-                Add a timer to get started
+                Create your first focus timer
               </Text>
             </View>
           ) : (
@@ -164,12 +201,13 @@ export default function TimersScreen() {
               <View key={timer.id} style={styles.timerCard}>
                 <View style={styles.timerHeader}>
                   <Text style={styles.timerName}>{timer.name}</Text>
-                  <Pressable onPress={() => deleteTimer(timer.id)}>
+                  <Pressable
+                    style={styles.deleteButton}
+                    onPress={() => deleteTimer(timer.id)}
+                  >
                     <IconSymbol name="trash" color={colors.secondary} size={20} />
                   </Pressable>
                 </View>
-
-                <Text style={styles.timerDisplay}>{formatTime(timer.remaining)}</Text>
 
                 <View style={styles.progressBarContainer}>
                   <View 
@@ -180,68 +218,65 @@ export default function TimersScreen() {
                   />
                 </View>
 
-                <View style={styles.timerControls}>
+                <Text style={styles.timerDisplay}>{formatTime(timer.remaining)}</Text>
+
+                <View style={styles.timerActions}>
                   <Pressable
-                    style={[styles.controlButton, { backgroundColor: timer.isRunning ? colors.accent : colors.primary }]}
+                    style={[
+                      styles.actionButton,
+                      timer.isRunning ? styles.pauseButton : styles.playButton
+                    ]}
                     onPress={() => toggleTimer(timer.id)}
                   >
                     <IconSymbol 
                       name={timer.isRunning ? "pause.fill" : "play.fill"} 
                       color="#ffffff" 
-                      size={20} 
+                      size={24} 
                     />
+                    <Text style={styles.actionButtonText}>
+                      {timer.isRunning ? 'Pause' : 'Start'}
+                    </Text>
                   </Pressable>
 
                   <Pressable
-                    style={[styles.controlButton, { backgroundColor: colors.textSecondary }]}
+                    style={[styles.actionButton, styles.resetButton]}
                     onPress={() => resetTimer(timer.id)}
                   >
-                    <IconSymbol name="arrow.clockwise" color="#ffffff" size={20} />
+                    <IconSymbol name="arrow.clockwise" color="#ffffff" size={24} />
+                    <Text style={styles.actionButtonText}>Reset</Text>
                   </Pressable>
                 </View>
+
+                {timer.remaining === 0 && (
+                  <View style={styles.completedBanner}>
+                    <IconSymbol name="checkmark.circle.fill" color="#ffffff" size={20} />
+                    <Text style={styles.completedText}>Timer Complete!</Text>
+                  </View>
+                )}
               </View>
             ))
           )}
-
-          <View style={styles.presetsContainer}>
-            <Text style={commonStyles.sectionTitle}>Quick Presets</Text>
-            <View style={styles.presetsGrid}>
-              {presetTimers.map((preset) => (
-                <Pressable
-                  key={preset.name}
-                  style={styles.presetCard}
-                  onPress={() => {
-                    setTimerName(preset.name);
-                    setTimerMinutes(preset.minutes.toString());
-                    setModalVisible(true);
-                  }}
-                >
-                  <Text style={styles.presetName}>{preset.name}</Text>
-                  <Text style={styles.presetDuration}>{preset.minutes} min</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
         </ScrollView>
 
+        {/* Add Timer Modal */}
         <Modal
-          visible={modalVisible}
+          visible={showAddModal}
           animationType="slide"
           transparent={true}
-          onRequestClose={() => setModalVisible(false)}
+          onRequestClose={() => setShowAddModal(false)}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={commonStyles.title}>Add Timer</Text>
-                <Pressable onPress={() => setModalVisible(false)}>
+                <Pressable onPress={() => setShowAddModal(false)}>
                   <IconSymbol name="xmark" color={colors.text} size={24} />
                 </Pressable>
               </View>
 
               <TextInput
                 style={commonStyles.input}
-                placeholder="Timer Name"
+                placeholder="Timer Name (e.g., Focus Session)"
                 placeholderTextColor={colors.textSecondary}
                 value={timerName}
                 onChangeText={setTimerName}
@@ -256,8 +291,23 @@ export default function TimersScreen() {
                 onChangeText={setTimerMinutes}
               />
 
+              <View style={styles.presetContainer}>
+                <Text style={styles.presetLabel}>Quick Presets:</Text>
+                <View style={styles.presetButtons}>
+                  {[5, 15, 25, 45, 60].map((minutes) => (
+                    <Pressable
+                      key={minutes}
+                      style={styles.presetButton}
+                      onPress={() => setTimerMinutes(minutes.toString())}
+                    >
+                      <Text style={styles.presetButtonText}>{minutes}m</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
               <Pressable style={buttonStyles.primary} onPress={addTimer}>
-                <Text style={buttonStyles.text}>Create Timer</Text>
+                <Text style={buttonStyles.text}>Add Timer</Text>
               </Pressable>
             </View>
           </View>
@@ -276,11 +326,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  addButton: {
+  notificationBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
+    backgroundColor: colors.highlight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 8,
+    gap: 6,
+  },
+  notificationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.success,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 48,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
   },
   timerCard: {
     backgroundColor: colors.card,
@@ -300,75 +370,72 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: colors.text,
+    flex: 1,
   },
-  timerDisplay: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: colors.primary,
-    textAlign: 'center',
-    marginBottom: 16,
+  deleteButton: {
+    padding: 4,
   },
   progressBarContainer: {
     height: 8,
-    backgroundColor: colors.border,
+    backgroundColor: colors.highlight,
     borderRadius: 4,
-    overflow: 'hidden',
     marginBottom: 16,
+    overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
     backgroundColor: colors.primary,
+    borderRadius: 4,
   },
-  timerControls: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  controlButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyState: {
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
+  timerDisplay: {
+    fontSize: 48,
+    fontWeight: '700',
     color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
+    textAlign: 'center',
+    marginBottom: 16,
+    fontVariant: ['tabular-nums'],
   },
-  presetsContainer: {
-    marginTop: 24,
-  },
-  presetsGrid: {
+  timerActions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
   },
-  presetCard: {
+  actionButton: {
     flex: 1,
-    minWidth: '45%',
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 16,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.primary,
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
   },
-  presetName: {
+  playButton: {
+    backgroundColor: colors.success,
+  },
+  pauseButton: {
+    backgroundColor: colors.accent,
+  },
+  resetButton: {
+    backgroundColor: colors.textSecondary,
+  },
+  actionButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
+    color: '#ffffff',
   },
-  presetDuration: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  completedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.success,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+  },
+  completedText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   modalOverlay: {
     flex: 1,
@@ -389,5 +456,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  presetContainer: {
+    marginBottom: 16,
+  },
+  presetLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  presetButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  presetButton: {
+    backgroundColor: colors.highlight,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  presetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });
