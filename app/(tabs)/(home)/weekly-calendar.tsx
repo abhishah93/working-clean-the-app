@@ -34,6 +34,11 @@ export default function WeeklyCalendarScreen() {
   const [eventType, setEventType] = useState<'process' | 'immersive'>('process');
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
   const [selectedWeek, setSelectedWeek] = useState(0);
+  
+  // Manual time input states
+  const [useManualTimeInput, setUseManualTimeInput] = useState(false);
+  const [manualStartTime, setManualStartTime] = useState('');
+  const [manualEndTime, setManualEndTime] = useState('');
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -91,6 +96,66 @@ export default function WeeklyCalendarScreen() {
     return hours * 60 + minutes;
   };
 
+  // Parse manual time input (e.g., "7:15 AM", "7:15 am", "715am", "7:15")
+  const parseManualTime = (timeStr: string): { hours: number; minutes: number } | null => {
+    try {
+      // Remove extra spaces and convert to lowercase
+      const cleaned = timeStr.trim().toLowerCase().replace(/\s+/g, ' ');
+      
+      // Check for AM/PM
+      const isPM = cleaned.includes('pm');
+      const isAM = cleaned.includes('am');
+      
+      // Remove AM/PM from string
+      const timeOnly = cleaned.replace(/am|pm/g, '').trim();
+      
+      // Parse different formats
+      let hours = 0;
+      let minutes = 0;
+      
+      if (timeOnly.includes(':')) {
+        // Format: "7:15" or "07:15"
+        const parts = timeOnly.split(':');
+        hours = parseInt(parts[0], 10);
+        minutes = parseInt(parts[1], 10);
+      } else {
+        // Format: "715" or "7"
+        const num = parseInt(timeOnly, 10);
+        if (num < 100) {
+          // Just hours
+          hours = num;
+          minutes = 0;
+        } else {
+          // Hours and minutes combined
+          hours = Math.floor(num / 100);
+          minutes = num % 100;
+        }
+      }
+      
+      // Validate
+      if (isNaN(hours) || isNaN(minutes) || minutes >= 60 || minutes < 0) {
+        return null;
+      }
+      
+      // Convert to 24-hour format
+      if (isPM && hours !== 12) {
+        hours += 12;
+      } else if (isAM && hours === 12) {
+        hours = 0;
+      }
+      
+      // Validate hours
+      if (hours >= 24 || hours < 0) {
+        return null;
+      }
+      
+      return { hours, minutes };
+    } catch (error) {
+      console.error('Error parsing time:', error);
+      return null;
+    }
+  };
+
   const checkOverlaps = (newEvent: CalendarEvent, excludeId?: string): CalendarEvent[] => {
     const overlapping: CalendarEvent[] = [];
     const newStart = timeToMinutes(newEvent.startTime);
@@ -116,20 +181,38 @@ export default function WeeklyCalendarScreen() {
     return overlapping;
   };
 
-  const openAddEventModal = (day: number, timeSlot: string) => {
+  const openAddEventModal = (day: number, timeSlot?: string) => {
     setSelectedDay(day);
-    const [hours, minutes] = timeSlot.split(':').map(Number);
-    const start = new Date();
-    start.setHours(hours, minutes, 0, 0);
-    const end = new Date(start);
-    end.setHours(hours + 1, minutes, 0, 0); // Default 1 hour duration
     
-    setStartTime(start);
-    setEndTime(end);
+    if (timeSlot) {
+      const [hours, minutes] = timeSlot.split(':').map(Number);
+      const start = new Date();
+      start.setHours(hours, minutes, 0, 0);
+      const end = new Date(start);
+      end.setHours(hours + 1, minutes, 0, 0); // Default 1 hour duration
+      
+      setStartTime(start);
+      setEndTime(end);
+      setManualStartTime(convertTo12Hour(timeSlot));
+      setManualEndTime(convertTo12Hour(`${(hours + 1).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`));
+    } else {
+      // Default to 9 AM when using + button
+      const start = new Date();
+      start.setHours(9, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(10, 0, 0, 0);
+      
+      setStartTime(start);
+      setEndTime(end);
+      setManualStartTime('9:00 AM');
+      setManualEndTime('10:00 AM');
+    }
+    
     setEventTitle('');
     setEventDescription('');
     setEventType('process');
     setEditingEvent(null);
+    setUseManualTimeInput(false);
     setModalVisible(true);
   };
 
@@ -146,10 +229,13 @@ export default function WeeklyCalendarScreen() {
     
     setStartTime(start);
     setEndTime(end);
+    setManualStartTime(convertTo12Hour(event.startTime));
+    setManualEndTime(convertTo12Hour(event.endTime));
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventType(event.type || 'process');
     setEditingEvent(event);
+    setUseManualTimeInput(false);
     setModalVisible(true);
   };
 
@@ -159,13 +245,36 @@ export default function WeeklyCalendarScreen() {
       return;
     }
 
-    const startHours = startTime.getHours();
-    const startMinutes = startTime.getMinutes();
-    const startTime24 = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')}`;
+    let startTime24: string;
+    let endTime24: string;
 
-    const endHours = endTime.getHours();
-    const endMinutes = endTime.getMinutes();
-    const endTime24 = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+    if (useManualTimeInput) {
+      // Parse manual time input
+      const parsedStart = parseManualTime(manualStartTime);
+      const parsedEnd = parseManualTime(manualEndTime);
+
+      if (!parsedStart) {
+        Alert.alert('Invalid Time', 'Please enter a valid start time (e.g., "7:15 AM", "9:30 PM", "1430")');
+        return;
+      }
+
+      if (!parsedEnd) {
+        Alert.alert('Invalid Time', 'Please enter a valid end time (e.g., "8:15 AM", "10:30 PM", "1530")');
+        return;
+      }
+
+      startTime24 = `${parsedStart.hours.toString().padStart(2, '0')}:${parsedStart.minutes.toString().padStart(2, '0')}`;
+      endTime24 = `${parsedEnd.hours.toString().padStart(2, '0')}:${parsedEnd.minutes.toString().padStart(2, '0')}`;
+    } else {
+      // Use time picker values
+      const startHours = startTime.getHours();
+      const startMinutes = startTime.getMinutes();
+      startTime24 = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')}`;
+
+      const endHours = endTime.getHours();
+      const endMinutes = endTime.getMinutes();
+      endTime24 = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+    }
 
     // Validate that end time is after start time
     if (timeToMinutes(endTime24) <= timeToMinutes(startTime24)) {
@@ -415,14 +524,24 @@ export default function WeeklyCalendarScreen() {
           </Pressable>
         </View>
 
-        {/* Link Tasks Button */}
-        <Pressable 
-          style={[buttonStyles.primary, { marginHorizontal: 16, marginBottom: 16 }]} 
-          onPress={linkTasksFromMeezes}
-        >
-          <IconSymbol name="link" color="#ffffff" size={20} />
-          <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Link Tasks from Meezes</Text>
-        </Pressable>
+        {/* Action Buttons Row */}
+        <View style={styles.actionButtonsRow}>
+          <Pressable 
+            style={[buttonStyles.primary, styles.actionButton]} 
+            onPress={linkTasksFromMeezes}
+          >
+            <IconSymbol name="link" color="#ffffff" size={20} />
+            <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Link Tasks</Text>
+          </Pressable>
+
+          <Pressable 
+            style={[buttonStyles.secondary, styles.actionButton, styles.addButton]} 
+            onPress={() => openAddEventModal(1)}
+          >
+            <IconSymbol name="plus.circle.fill" color="#ffffff" size={24} />
+            <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Add Event</Text>
+          </Pressable>
+        </View>
 
         {draggedEvent && (
           <View style={styles.movingBanner}>
@@ -531,52 +650,163 @@ export default function WeeklyCalendarScreen() {
                   </Pressable>
                 </View>
 
-                <Text style={styles.modalLabel}>Day: {daysOfWeek[selectedDay]}</Text>
-                
-                <Text style={styles.modalLabel}>Start Time:</Text>
-                <Pressable
-                  style={styles.timePickerButton}
-                  onPress={() => setShowStartTimePicker(true)}
+                <Text style={styles.modalLabel}>Day:</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.daySelector}
                 >
-                  <Text style={styles.timePickerText}>
-                    {convertTo12Hour(`${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`)}
-                  </Text>
-                </Pressable>
+                  {daysOfWeek.map((day, index) => (
+                    <Pressable
+                      key={index}
+                      style={[
+                        styles.daySelectorButton,
+                        selectedDay === index && styles.daySelectorButtonActive
+                      ]}
+                      onPress={() => setSelectedDay(index)}
+                    >
+                      <Text style={[
+                        styles.daySelectorText,
+                        selectedDay === index && styles.daySelectorTextActive
+                      ]}>
+                        {day.substring(0, 3)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
 
-                {showStartTimePicker && (
-                  <DateTimePicker
-                    value={startTime}
-                    mode="time"
-                    is24Hour={false}
-                    display="default"
-                    onChange={(event, date) => {
-                      setShowStartTimePicker(Platform.OS === 'ios');
-                      if (date) setStartTime(date);
-                    }}
-                  />
-                )}
+                {/* Time Input Mode Toggle */}
+                <View style={styles.timeInputModeToggle}>
+                  <Pressable
+                    style={[
+                      styles.timeInputModeButton,
+                      !useManualTimeInput && styles.timeInputModeButtonActive
+                    ]}
+                    onPress={() => setUseManualTimeInput(false)}
+                  >
+                    <IconSymbol 
+                      name="clock.fill" 
+                      color={!useManualTimeInput ? '#ffffff' : colors.textSecondary} 
+                      size={18} 
+                    />
+                    <Text style={[
+                      styles.timeInputModeText,
+                      !useManualTimeInput && styles.timeInputModeTextActive
+                    ]}>
+                      Picker
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.timeInputModeButton,
+                      useManualTimeInput && styles.timeInputModeButtonActive
+                    ]}
+                    onPress={() => setUseManualTimeInput(true)}
+                  >
+                    <IconSymbol 
+                      name="keyboard" 
+                      color={useManualTimeInput ? '#ffffff' : colors.textSecondary} 
+                      size={18} 
+                    />
+                    <Text style={[
+                      styles.timeInputModeText,
+                      useManualTimeInput && styles.timeInputModeTextActive
+                    ]}>
+                      Manual
+                    </Text>
+                  </Pressable>
+                </View>
 
-                <Text style={styles.modalLabel}>End Time:</Text>
-                <Pressable
-                  style={styles.timePickerButton}
-                  onPress={() => setShowEndTimePicker(true)}
-                >
-                  <Text style={styles.timePickerText}>
-                    {convertTo12Hour(`${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`)}
-                  </Text>
-                </Pressable>
+                {useManualTimeInput ? (
+                  <>
+                    {/* Manual Time Input */}
+                    <Text style={styles.modalLabel}>Time Range:</Text>
+                    <Text style={styles.helpText}>
+                      Enter times like: 7:15 AM, 9:30 PM, 1430, etc.
+                    </Text>
+                    <View style={styles.manualTimeInputRow}>
+                      <View style={styles.manualTimeInputContainer}>
+                        <Text style={styles.manualTimeLabel}>Start</Text>
+                        <TextInput
+                          style={styles.manualTimeInput}
+                          placeholder="7:15 AM"
+                          placeholderTextColor={colors.textSecondary}
+                          value={manualStartTime}
+                          onChangeText={setManualStartTime}
+                          autoCapitalize="none"
+                        />
+                      </View>
+                      <Text style={styles.timeSeparator}>-</Text>
+                      <View style={styles.manualTimeInputContainer}>
+                        <Text style={styles.manualTimeLabel}>End</Text>
+                        <TextInput
+                          style={styles.manualTimeInput}
+                          placeholder="8:15 AM"
+                          placeholderTextColor={colors.textSecondary}
+                          value={manualEndTime}
+                          onChangeText={setManualEndTime}
+                          autoCapitalize="none"
+                        />
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    {/* Time Picker Mode */}
+                    <Text style={styles.modalLabel}>Start Time:</Text>
+                    <Pressable
+                      style={styles.timePickerButton}
+                      onPress={() => setShowStartTimePicker(true)}
+                    >
+                      <Text style={styles.timePickerText}>
+                        {convertTo12Hour(`${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`)}
+                      </Text>
+                    </Pressable>
 
-                {showEndTimePicker && (
-                  <DateTimePicker
-                    value={endTime}
-                    mode="time"
-                    is24Hour={false}
-                    display="default"
-                    onChange={(event, date) => {
-                      setShowEndTimePicker(Platform.OS === 'ios');
-                      if (date) setEndTime(date);
-                    }}
-                  />
+                    {showStartTimePicker && (
+                      <DateTimePicker
+                        value={startTime}
+                        mode="time"
+                        is24Hour={false}
+                        display="default"
+                        onChange={(event, date) => {
+                          setShowStartTimePicker(Platform.OS === 'ios');
+                          if (date) {
+                            setStartTime(date);
+                            const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                            setManualStartTime(convertTo12Hour(timeStr));
+                          }
+                        }}
+                      />
+                    )}
+
+                    <Text style={styles.modalLabel}>End Time:</Text>
+                    <Pressable
+                      style={styles.timePickerButton}
+                      onPress={() => setShowEndTimePicker(true)}
+                    >
+                      <Text style={styles.timePickerText}>
+                        {convertTo12Hour(`${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`)}
+                      </Text>
+                    </Pressable>
+
+                    {showEndTimePicker && (
+                      <DateTimePicker
+                        value={endTime}
+                        mode="time"
+                        is24Hour={false}
+                        display="default"
+                        onChange={(event, date) => {
+                          setShowEndTimePicker(Platform.OS === 'ios');
+                          if (date) {
+                            setEndTime(date);
+                            const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+                            setManualEndTime(convertTo12Hour(timeStr));
+                          }
+                        }}
+                      />
+                    )}
+                  </>
                 )}
 
                 <TextInput
@@ -677,6 +907,21 @@ const styles = StyleSheet.create({
   },
   contextTabTextActive: {
     color: '#ffffff',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButton: {
+    backgroundColor: colors.accent,
   },
   movingBanner: {
     flexDirection: 'row',
@@ -838,6 +1083,97 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
     marginTop: 8,
+  },
+  daySelector: {
+    marginBottom: 16,
+  },
+  daySelectorButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    marginRight: 8,
+    backgroundColor: colors.background,
+  },
+  daySelectorButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.highlight,
+  },
+  daySelectorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  daySelectorTextActive: {
+    color: colors.primary,
+  },
+  timeInputModeToggle: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 4,
+    gap: 8,
+  },
+  timeInputModeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 6,
+  },
+  timeInputModeButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  timeInputModeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  timeInputModeTextActive: {
+    color: '#ffffff',
+  },
+  helpText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  manualTimeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  manualTimeInputContainer: {
+    flex: 1,
+  },
+  manualTimeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  manualTimeInput: {
+    backgroundColor: colors.highlight,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  timeSeparator: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 20,
   },
   timePickerButton: {
     backgroundColor: colors.highlight,
