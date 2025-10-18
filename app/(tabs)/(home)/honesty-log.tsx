@@ -1,10 +1,18 @@
 
 import React, { useState, useEffect } from "react";
 import { Stack, router } from "expo-router";
-import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Platform } from "react-native";
+import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Platform, Modal, Alert } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+interface TaskLog {
+  id: string;
+  date: string;
+  taskName: string;
+  timeSpent: number; // in minutes
+  type: 'task' | 'break';
+}
 
 interface HonestyEntry {
   id: string;
@@ -14,11 +22,18 @@ interface HonestyEntry {
 
 export default function HonestyLogScreen() {
   const [entries, setEntries] = useState<HonestyEntry[]>([]);
+  const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
   const [newEntry, setNewEntry] = useState('');
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
+  
+  const [showTaskLogModal, setShowTaskLogModal] = useState(false);
+  const [logType, setLogType] = useState<'task' | 'break'>('task');
+  const [taskName, setTaskName] = useState('');
+  const [timeSpent, setTimeSpent] = useState('');
 
   useEffect(() => {
     loadEntries();
+    loadTaskLogs();
   }, []);
 
   const loadEntries = async () => {
@@ -30,6 +45,18 @@ export default function HonestyLogScreen() {
       }
     } catch (error) {
       console.error('Error loading honesty log:', error);
+    }
+  };
+
+  const loadTaskLogs = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('task-logs');
+      if (stored) {
+        setTaskLogs(JSON.parse(stored));
+        console.log('Loaded task logs');
+      }
+    } catch (error) {
+      console.error('Error loading task logs:', error);
     }
   };
 
@@ -68,6 +95,52 @@ export default function HonestyLogScreen() {
     }
   };
 
+  const saveTaskLog = async () => {
+    if (!taskName.trim() || !timeSpent.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    const minutes = parseInt(timeSpent);
+    if (isNaN(minutes) || minutes <= 0) {
+      Alert.alert('Error', 'Please enter a valid time in minutes');
+      return;
+    }
+
+    const log: TaskLog = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      taskName: taskName,
+      timeSpent: minutes,
+      type: logType,
+    };
+
+    const updatedLogs = [log, ...taskLogs];
+    
+    try {
+      await AsyncStorage.setItem('task-logs', JSON.stringify(updatedLogs));
+      setTaskLogs(updatedLogs);
+      setTaskName('');
+      setTimeSpent('');
+      setShowTaskLogModal(false);
+      console.log('Saved task log');
+    } catch (error) {
+      console.error('Error saving task log:', error);
+    }
+  };
+
+  const deleteTaskLog = async (id: string) => {
+    const updatedLogs = taskLogs.filter(l => l.id !== id);
+    
+    try {
+      await AsyncStorage.setItem('task-logs', JSON.stringify(updatedLogs));
+      setTaskLogs(updatedLogs);
+      console.log('Deleted task log');
+    } catch (error) {
+      console.error('Error deleting task log:', error);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
@@ -78,6 +151,33 @@ export default function HonestyLogScreen() {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const formatTime = (minutes: number) => {
+    if (minutes < 60) {
+      return `${minutes} min`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
+  const getTotalTimeToday = () => {
+    const today = new Date().toDateString();
+    const todayLogs = taskLogs.filter(log => {
+      const logDate = new Date(log.date).toDateString();
+      return logDate === today && log.type === 'task';
+    });
+    return todayLogs.reduce((sum, log) => sum + log.timeSpent, 0);
+  };
+
+  const getTotalBreaksToday = () => {
+    const today = new Date().toDateString();
+    const todayBreaks = taskLogs.filter(log => {
+      const logDate = new Date(log.date).toDateString();
+      return logDate === today && log.type === 'break';
+    });
+    return todayBreaks.reduce((sum, log) => sum + log.timeSpent, 0);
   };
 
   return (
@@ -97,12 +197,72 @@ export default function HonestyLogScreen() {
             <IconSymbol name="book.fill" color={colors.accent} size={32} />
             <Text style={commonStyles.title}>Honesty Log</Text>
             <Text style={commonStyles.textSecondary}>
-              Track your honest reflections and thoughts
+              Track time on tasks, breaks, and reflections
             </Text>
           </View>
 
+          {/* Today's Summary */}
           <View style={commonStyles.card}>
-            <Text style={commonStyles.sectionTitle}>New Entry</Text>
+            <Text style={commonStyles.sectionTitle}>📊 Today&apos;s Summary</Text>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Work Time</Text>
+                <Text style={styles.summaryValue}>{formatTime(getTotalTimeToday())}</Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Break Time</Text>
+                <Text style={styles.summaryValue}>{formatTime(getTotalBreaksToday())}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Task/Break Logging */}
+          <View style={commonStyles.card}>
+            <View style={styles.sectionHeader}>
+              <Text style={commonStyles.sectionTitle}>⏱️ Time Tracking</Text>
+              <Pressable
+                style={styles.addButton}
+                onPress={() => setShowTaskLogModal(true)}
+              >
+                <IconSymbol name="plus" color="#ffffff" size={20} />
+              </Pressable>
+            </View>
+            
+            {taskLogs.length === 0 ? (
+              <View style={styles.emptyState}>
+                <IconSymbol name="clock" color={colors.textSecondary} size={32} />
+                <Text style={styles.emptyStateText}>No time logs yet</Text>
+              </View>
+            ) : (
+              taskLogs.slice(0, 5).map((log) => (
+                <View key={log.id} style={styles.taskLogCard}>
+                  <View style={styles.taskLogHeader}>
+                    <View style={[
+                      styles.taskLogBadge,
+                      { backgroundColor: log.type === 'task' ? colors.primary : colors.success }
+                    ]}>
+                      <Text style={styles.taskLogBadgeText}>
+                        {log.type === 'task' ? '💼 Task' : '☕ Break'}
+                      </Text>
+                    </View>
+                    <Pressable onPress={() => deleteTaskLog(log.id)}>
+                      <IconSymbol name="trash" color={colors.secondary} size={18} />
+                    </Pressable>
+                  </View>
+                  <Text style={styles.taskLogName}>{log.taskName}</Text>
+                  <View style={styles.taskLogFooter}>
+                    <Text style={styles.taskLogTime}>{formatTime(log.timeSpent)}</Text>
+                    <Text style={styles.taskLogDate}>{formatDate(log.date)}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+
+          {/* Reflection Entry */}
+          <View style={commonStyles.card}>
+            <Text style={commonStyles.sectionTitle}>📝 New Reflection</Text>
             <TextInput
               style={commonStyles.textArea}
               multiline
@@ -113,16 +273,17 @@ export default function HonestyLogScreen() {
               onChangeText={setNewEntry}
             />
             <Pressable style={buttonStyles.primary} onPress={saveEntry}>
-              <Text style={buttonStyles.text}>Add Entry</Text>
+              <Text style={buttonStyles.text}>Add Reflection</Text>
             </Pressable>
           </View>
 
+          {/* Previous Reflections */}
           <View style={styles.entriesContainer}>
-            <Text style={commonStyles.sectionTitle}>Previous Entries</Text>
+            <Text style={commonStyles.sectionTitle}>Previous Reflections</Text>
             {entries.length === 0 ? (
               <View style={styles.emptyState}>
                 <IconSymbol name="book" color={colors.textSecondary} size={48} />
-                <Text style={styles.emptyStateText}>No entries yet</Text>
+                <Text style={styles.emptyStateText}>No reflections yet</Text>
                 <Text style={commonStyles.textSecondary}>
                   Start by adding your first honest reflection
                 </Text>
@@ -156,6 +317,78 @@ export default function HonestyLogScreen() {
             )}
           </View>
         </ScrollView>
+
+        {/* Task Log Modal */}
+        <Modal
+          visible={showTaskLogModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowTaskLogModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={commonStyles.title}>Log Time</Text>
+                <Pressable onPress={() => setShowTaskLogModal(false)}>
+                  <IconSymbol name="xmark" color={colors.text} size={24} />
+                </Pressable>
+              </View>
+
+              <Text style={styles.modalLabel}>Type:</Text>
+              <View style={styles.typeSelector}>
+                <Pressable
+                  style={[
+                    styles.typeOption,
+                    logType === 'task' && styles.typeOptionActive
+                  ]}
+                  onPress={() => setLogType('task')}
+                >
+                  <Text style={[
+                    styles.typeOptionText,
+                    logType === 'task' && styles.typeOptionTextActive
+                  ]}>
+                    💼 Task
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.typeOption,
+                    logType === 'break' && styles.typeOptionActive
+                  ]}
+                  onPress={() => setLogType('break')}
+                >
+                  <Text style={[
+                    styles.typeOptionText,
+                    logType === 'break' && styles.typeOptionTextActive
+                  ]}>
+                    ☕ Break
+                  </Text>
+                </Pressable>
+              </View>
+
+              <TextInput
+                style={commonStyles.input}
+                placeholder={logType === 'task' ? "Task name" : "Break activity"}
+                placeholderTextColor={colors.textSecondary}
+                value={taskName}
+                onChangeText={setTaskName}
+              />
+
+              <TextInput
+                style={commonStyles.input}
+                placeholder="Time spent (minutes)"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="numeric"
+                value={timeSpent}
+                onChangeText={setTimeSpent}
+              />
+
+              <Pressable style={buttonStyles.primary} onPress={saveTaskLog}>
+                <Text style={buttonStyles.text}>Log Time</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </View>
     </>
   );
@@ -169,6 +402,88 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 24,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  summaryItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  summaryLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.border,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addButton: {
+    backgroundColor: colors.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  taskLogCard: {
+    backgroundColor: colors.highlight,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  taskLogHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  taskLogBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  taskLogBadgeText: {
+    fontSize: 12,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  taskLogName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  taskLogFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  taskLogTime: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  taskLogDate: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   entriesContainer: {
     marginTop: 24,
@@ -213,5 +528,57 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: 16,
     marginBottom: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  typeOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  typeOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.highlight,
+  },
+  typeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  typeOptionTextActive: {
+    color: colors.primary,
   },
 });

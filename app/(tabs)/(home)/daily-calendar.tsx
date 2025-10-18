@@ -11,6 +11,7 @@ interface CalendarEvent {
   time: string;
   title: string;
   description: string;
+  type?: 'process' | 'immersive';
 }
 
 export default function DailyCalendarScreen() {
@@ -21,6 +22,8 @@ export default function DailyCalendarScreen() {
   const [selectedTime, setSelectedTime] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
+  const [eventType, setEventType] = useState<'process' | 'immersive'>('process');
+  const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
 
   const timeSlots = Array.from({ length: 48 }, (_, i) => {
     const hour = Math.floor(i / 2);
@@ -60,6 +63,7 @@ export default function DailyCalendarScreen() {
     setSelectedTime(time);
     setEventTitle('');
     setEventDescription('');
+    setEventType('process');
     setEditingEvent(null);
     setModalVisible(true);
   };
@@ -68,6 +72,7 @@ export default function DailyCalendarScreen() {
     setSelectedTime(event.time);
     setEventTitle(event.title);
     setEventDescription(event.description);
+    setEventType(event.type || 'process');
     setEditingEvent(event);
     setModalVisible(true);
   };
@@ -83,6 +88,7 @@ export default function DailyCalendarScreen() {
       time: selectedTime,
       title: eventTitle,
       description: eventDescription,
+      type: eventType,
     };
 
     let updatedEvents: CalendarEvent[];
@@ -114,6 +120,37 @@ export default function DailyCalendarScreen() {
     );
   };
 
+  const handleLongPress = (event: CalendarEvent) => {
+    setDraggedEvent(event);
+    Alert.alert(
+      'Move Event',
+      `Moving "${event.title}". Tap a time slot to move it there.`,
+      [
+        { text: 'Cancel', onPress: () => setDraggedEvent(null) }
+      ]
+    );
+  };
+
+  const handleTimeSlotPress = (time: string) => {
+    if (draggedEvent) {
+      // Move the event to the new time
+      const updatedEvents = events.map(e => 
+        e.id === draggedEvent.id ? { ...e, time } : e
+      ).sort((a, b) => a.time.localeCompare(b.time));
+      
+      saveEvents(updatedEvents);
+      setDraggedEvent(null);
+      Alert.alert('Success', 'Event moved successfully');
+    } else {
+      const event = getEventForTime(time);
+      if (event) {
+        openEditEventModal(event);
+      } else {
+        openAddEventModal(time);
+      }
+    }
+  };
+
   const getEventForTime = (time: string) => {
     return events.find(e => e.time === time);
   };
@@ -134,20 +171,34 @@ export default function DailyCalendarScreen() {
           <View style={styles.header}>
             <Text style={commonStyles.title}>30-Minute Time Blocks</Text>
             <Text style={commonStyles.textSecondary}>
-              Tap a time slot to add or edit an event
+              Tap to add/edit • Long press to move events
             </Text>
           </View>
 
+          {draggedEvent && (
+            <View style={styles.movingBanner}>
+              <IconSymbol name="arrow.up.arrow.down" color="#ffffff" size={20} />
+              <Text style={styles.movingBannerText}>
+                Moving: {draggedEvent.title}
+              </Text>
+            </View>
+          )}
+
           {timeSlots.map((time) => {
             const event = getEventForTime(time);
+            const isBeingMoved = draggedEvent?.id === event?.id;
+            
             return (
               <Pressable
                 key={time}
                 style={[
                   styles.timeSlot,
-                  event && styles.timeSlotWithEvent
+                  event && styles.timeSlotWithEvent,
+                  isBeingMoved && styles.timeSlotBeingMoved,
+                  draggedEvent && !event && styles.timeSlotDropTarget,
                 ]}
-                onPress={() => event ? openEditEventModal(event) : openAddEventModal(time)}
+                onPress={() => handleTimeSlotPress(time)}
+                onLongPress={() => event && handleLongPress(event)}
               >
                 <View style={styles.timeSlotTime}>
                   <Text style={styles.timeText}>{time}</Text>
@@ -155,7 +206,19 @@ export default function DailyCalendarScreen() {
                 <View style={styles.timeSlotContent}>
                   {event ? (
                     <>
-                      <Text style={styles.eventTitle}>{event.title}</Text>
+                      <View style={styles.eventHeader}>
+                        <Text style={styles.eventTitle}>{event.title}</Text>
+                        {event.type && (
+                          <View style={[
+                            styles.eventTypeBadge,
+                            { backgroundColor: event.type === 'process' ? colors.primary : colors.accent }
+                          ]}>
+                            <Text style={styles.eventTypeText}>
+                              {event.type === 'process' ? '⚙️' : '🎨'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                       {event.description ? (
                         <Text style={styles.eventDescription}>{event.description}</Text>
                       ) : null}
@@ -167,7 +230,9 @@ export default function DailyCalendarScreen() {
                       </Pressable>
                     </>
                   ) : (
-                    <Text style={styles.emptySlotText}>Tap to add event</Text>
+                    <Text style={styles.emptySlotText}>
+                      {draggedEvent ? 'Tap to move here' : 'Tap to add event'}
+                    </Text>
                   )}
                 </View>
               </Pressable>
@@ -212,6 +277,38 @@ export default function DailyCalendarScreen() {
                 onChangeText={setEventDescription}
               />
 
+              <Text style={styles.modalLabel}>Task Type:</Text>
+              <View style={styles.typeSelector}>
+                <Pressable
+                  style={[
+                    styles.typeOption,
+                    eventType === 'process' && styles.typeOptionActive
+                  ]}
+                  onPress={() => setEventType('process')}
+                >
+                  <Text style={[
+                    styles.typeOptionText,
+                    eventType === 'process' && styles.typeOptionTextActive
+                  ]}>
+                    ⚙️ Process
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.typeOption,
+                    eventType === 'immersive' && styles.typeOptionActive
+                  ]}
+                  onPress={() => setEventType('immersive')}
+                >
+                  <Text style={[
+                    styles.typeOptionText,
+                    eventType === 'immersive' && styles.typeOptionTextActive
+                  ]}>
+                    🎨 Immersive
+                  </Text>
+                </Pressable>
+              </View>
+
               <Pressable style={buttonStyles.primary} onPress={saveEvent}>
                 <Text style={buttonStyles.text}>
                   {editingEvent ? 'Update Event' : 'Add Event'}
@@ -234,6 +331,21 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     alignItems: 'center',
   },
+  movingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  movingBannerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
   timeSlot: {
     flexDirection: 'row',
     backgroundColor: colors.card,
@@ -246,6 +358,16 @@ const styles = StyleSheet.create({
   timeSlotWithEvent: {
     backgroundColor: colors.highlight,
     borderColor: colors.accent,
+  },
+  timeSlotBeingMoved: {
+    opacity: 0.5,
+    borderColor: colors.secondary,
+    borderWidth: 2,
+  },
+  timeSlotDropTarget: {
+    borderColor: colors.success,
+    borderWidth: 2,
+    borderStyle: 'dashed',
   },
   timeSlotTime: {
     width: 80,
@@ -269,11 +391,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontStyle: 'italic',
   },
+  eventHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   eventTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
+    flex: 1,
+  },
+  eventTypeBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  eventTypeText: {
+    fontSize: 14,
   },
   eventDescription: {
     fontSize: 14,
@@ -310,5 +449,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
     marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  typeOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  typeOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.highlight,
+  },
+  typeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  typeOptionTextActive: {
+    color: colors.primary,
   },
 });

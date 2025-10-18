@@ -11,16 +11,19 @@ export default function HomeScreen() {
   const [selectedWeek, setSelectedWeek] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
 
+  // Get Sunday to Saturday week dates
   const getWeekDates = (dateString: string) => {
     const date = new Date(dateString);
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-    const monday = new Date(date.setDate(diff));
+    const day = date.getDay(); // 0 = Sunday, 6 = Saturday
+    
+    // Calculate Sunday of the week
+    const sunday = new Date(date);
+    sunday.setDate(date.getDate() - day);
     
     const weekDates: string[] = [];
     for (let i = 0; i < 7; i++) {
-      const currentDate = new Date(monday);
-      currentDate.setDate(monday.getDate() + i);
+      const currentDate = new Date(sunday);
+      currentDate.setDate(sunday.getDate() + i);
       weekDates.push(currentDate.toISOString().split('T')[0]);
     }
     return weekDates;
@@ -38,13 +41,13 @@ export default function HomeScreen() {
     } else {
       const weekDates = getWeekDates(day.dateString);
       setSelectedWeek(weekDates);
-      console.log('Selected week:', weekDates);
+      console.log('Selected week (Sun-Sat):', weekDates);
       // Navigate to weekly meeze
       router.push({
         pathname: '/(tabs)/(home)/weekly-meeze',
         params: { 
-          startDate: weekDates[0],
-          endDate: weekDates[6]
+          startDate: weekDates[0], // Sunday
+          endDate: weekDates[6]    // Saturday
         }
       });
     }
@@ -62,10 +65,12 @@ export default function HomeScreen() {
       selectedWeek.forEach((date, index) => {
         marked[date] = {
           selected: true,
-          selectedColor: colors.highlight,
+          color: colors.highlight,
           textColor: colors.text,
           startingDay: index === 0,
           endingDay: index === 6,
+          marked: true,
+          dotColor: colors.primary,
         };
       });
     }
@@ -140,7 +145,7 @@ export default function HomeScreen() {
                 styles.viewModeText,
                 viewMode === 'week' && styles.viewModeTextActive
               ]}>
-                Weekly View
+                Weekly View (Sun-Sat)
               </Text>
             </Pressable>
           </View>
@@ -196,7 +201,7 @@ export default function HomeScreen() {
               <View style={styles.quickAccessContent}>
                 <Text style={styles.quickAccessTitle}>Honesty Log</Text>
                 <Text style={commonStyles.textSecondary}>
-                  Track your daily reflections
+                  Track time on tasks and breaks
                 </Text>
               </View>
               <IconSymbol name="chevron.right" color={colors.textSecondary} size={20} />
