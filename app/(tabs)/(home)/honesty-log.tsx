@@ -32,6 +32,14 @@ interface Habit {
   context: 'work' | 'home';
 }
 
+interface DailyStats {
+  date: string;
+  workTime: number;
+  breakTime: number;
+  taskCount: number;
+  breakCount: number;
+}
+
 export default function HonestyLogScreen() {
   const [entries, setEntries] = useState<HonestyEntry[]>([]);
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
@@ -166,6 +174,16 @@ export default function HonestyLogScreen() {
     });
   };
 
+  const formatDateOnly = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'long',
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric'
+    });
+  };
+
   const formatTime = (minutes: number) => {
     if (minutes < 60) {
       return `${minutes} min`;
@@ -193,22 +211,61 @@ export default function HonestyLogScreen() {
     return todayBreaks.reduce((sum, log) => sum + log.timeSpent, 0);
   };
 
-  const getWeeklyStats = async () => {
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // Group logs by day
+  const getLogsByDay = () => {
+    const grouped: { [key: string]: TaskLog[] } = {};
     
-    const weekLogs = taskLogs.filter(log => {
-      const logDate = new Date(log.date);
-      return logDate >= weekAgo && logDate <= today;
+    taskLogs.forEach(log => {
+      const dateKey = new Date(log.date).toDateString();
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(log);
     });
 
-    const workTime = weekLogs
-      .filter(log => log.type === 'task')
-      .reduce((sum, log) => sum + log.timeSpent, 0);
+    return grouped;
+  };
+
+  // Get daily stats for the past week
+  const getDailyStatsForWeek = (): DailyStats[] => {
+    const today = new Date();
+    const stats: DailyStats[] = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toDateString();
+
+      const dayLogs = taskLogs.filter(log => {
+        const logDate = new Date(log.date).toDateString();
+        return logDate === dateKey;
+      });
+
+      const workTime = dayLogs
+        .filter(log => log.type === 'task')
+        .reduce((sum, log) => sum + log.timeSpent, 0);
+      
+      const breakTime = dayLogs
+        .filter(log => log.type === 'break')
+        .reduce((sum, log) => sum + log.timeSpent, 0);
+
+      stats.push({
+        date: dateKey,
+        workTime,
+        breakTime,
+        taskCount: dayLogs.filter(log => log.type === 'task').length,
+        breakCount: dayLogs.filter(log => log.type === 'break').length,
+      });
+    }
+
+    return stats;
+  };
+
+  const getWeeklyStats = async () => {
+    const dailyStats = getDailyStatsForWeek();
     
-    const breakTime = weekLogs
-      .filter(log => log.type === 'break')
-      .reduce((sum, log) => sum + log.timeSpent, 0);
+    const totalWorkTime = dailyStats.reduce((sum, day) => sum + day.workTime, 0);
+    const totalBreakTime = dailyStats.reduce((sum, day) => sum + day.breakTime, 0);
 
     // Load habit data
     const workHabits = await loadHabitsForContext('work');
@@ -218,6 +275,9 @@ export default function HonestyLogScreen() {
 
     const allHabits = [...workHabits, ...homeHabits];
     const allHabitLogs = [...workHabitLogs, ...homeHabitLogs];
+
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const habitStats = allHabits.map(habit => {
       const weekCompletions = allHabitLogs.filter(log => {
@@ -236,9 +296,10 @@ export default function HonestyLogScreen() {
     });
 
     return {
-      workTime,
-      breakTime,
-      totalTime: workTime + breakTime,
+      dailyStats,
+      totalWorkTime,
+      totalBreakTime,
+      totalTime: totalWorkTime + totalBreakTime,
       habitStats,
       daysTracked: 7
     };
@@ -292,15 +353,51 @@ export default function HonestyLogScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Daily Breakdown */}
               <View style={styles.reportCard}>
-                <Text style={styles.reportSectionTitle}>⏱️ Time Tracking</Text>
+                <Text style={styles.reportSectionTitle}>📅 Daily Breakdown</Text>
+                {stats.dailyStats.map((day: DailyStats, index: number) => (
+                  <View key={index} style={styles.dailyStatRow}>
+                    <View style={styles.dailyStatHeader}>
+                      <Text style={styles.dailyStatDate}>
+                        {new Date(day.date).toLocaleDateString('en-US', { 
+                          weekday: 'short', 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </Text>
+                      <Text style={styles.dailyStatTotal}>
+                        {formatTime(day.workTime + day.breakTime)}
+                      </Text>
+                    </View>
+                    <View style={styles.dailyStatDetails}>
+                      <View style={styles.dailyStatItem}>
+                        <View style={[styles.statDot, { backgroundColor: colors.primary }]} />
+                        <Text style={styles.dailyStatLabel}>
+                          Work: {formatTime(day.workTime)} ({day.taskCount} tasks)
+                        </Text>
+                      </View>
+                      <View style={styles.dailyStatItem}>
+                        <View style={[styles.statDot, { backgroundColor: colors.success }]} />
+                        <Text style={styles.dailyStatLabel}>
+                          Break: {formatTime(day.breakTime)} ({day.breakCount} breaks)
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              {/* Weekly Summary */}
+              <View style={styles.reportCard}>
+                <Text style={styles.reportSectionTitle}>⏱️ Weekly Summary</Text>
                 <View style={styles.reportRow}>
-                  <Text style={styles.reportLabel}>Work Time:</Text>
-                  <Text style={styles.reportValue}>{formatTime(stats.workTime)}</Text>
+                  <Text style={styles.reportLabel}>Total Work Time:</Text>
+                  <Text style={styles.reportValue}>{formatTime(stats.totalWorkTime)}</Text>
                 </View>
                 <View style={styles.reportRow}>
-                  <Text style={styles.reportLabel}>Break Time:</Text>
-                  <Text style={styles.reportValue}>{formatTime(stats.breakTime)}</Text>
+                  <Text style={styles.reportLabel}>Total Break Time:</Text>
+                  <Text style={styles.reportValue}>{formatTime(stats.totalBreakTime)}</Text>
                 </View>
                 <View style={styles.reportRow}>
                   <Text style={styles.reportLabel}>Total Time:</Text>
@@ -308,8 +405,15 @@ export default function HonestyLogScreen() {
                     {formatTime(stats.totalTime)}
                   </Text>
                 </View>
+                <View style={styles.reportRow}>
+                  <Text style={styles.reportLabel}>Daily Average:</Text>
+                  <Text style={styles.reportValue}>
+                    {formatTime(Math.round(stats.totalWorkTime / 7))}
+                  </Text>
+                </View>
               </View>
 
+              {/* Habit Completion */}
               <View style={styles.reportCard}>
                 <Text style={styles.reportSectionTitle}>✅ Habit Completion</Text>
                 {stats.habitStats.length === 0 ? (
@@ -339,11 +443,19 @@ export default function HonestyLogScreen() {
                 )}
               </View>
 
+              {/* Summary */}
               <View style={styles.reportCard}>
-                <Text style={styles.reportSectionTitle}>📊 Summary</Text>
+                <Text style={styles.reportSectionTitle}>📊 Insights</Text>
                 <Text style={commonStyles.text}>
-                  This week you logged {formatTime(stats.workTime)} of focused work time
+                  This week you logged {formatTime(stats.totalWorkTime)} of focused work time
                   {stats.habitStats.length > 0 && ` and completed ${stats.habitStats.reduce((sum: number, h: any) => sum + h.completions, 0)} habit check-ins`}.
+                  {'\n\n'}
+                  Your most productive day was {stats.dailyStats.reduce((max: DailyStats, day: DailyStats) => 
+                    day.workTime > max.workTime ? day : max
+                  ).date && new Date(stats.dailyStats.reduce((max: DailyStats, day: DailyStats) => 
+                    day.workTime > max.workTime ? day : max
+                  ).date).toLocaleDateString('en-US', { weekday: 'long' })}.
+                  {'\n\n'}
                   Keep up the great work!
                 </Text>
               </View>
@@ -353,6 +465,11 @@ export default function HonestyLogScreen() {
       </Modal>
     );
   };
+
+  const logsByDay = getLogsByDay();
+  const sortedDays = Object.keys(logsByDay).sort((a, b) => 
+    new Date(b).getTime() - new Date(a).getTime()
+  );
 
   return (
     <>
@@ -403,7 +520,7 @@ export default function HonestyLogScreen() {
           {/* Task/Break Logging */}
           <View style={commonStyles.card}>
             <View style={styles.sectionHeader}>
-              <Text style={commonStyles.sectionTitle}>⏱️ Time Tracking</Text>
+              <Text style={commonStyles.sectionTitle}>⏱️ Time Tracking by Day</Text>
               <Pressable
                 style={styles.addButton}
                 onPress={() => setShowTaskLogModal(true)}
@@ -418,28 +535,50 @@ export default function HonestyLogScreen() {
                 <Text style={styles.emptyStateText}>No time logs yet</Text>
               </View>
             ) : (
-              taskLogs.slice(0, 5).map((log) => (
-                <View key={log.id} style={styles.taskLogCard}>
-                  <View style={styles.taskLogHeader}>
-                    <View style={[
-                      styles.taskLogBadge,
-                      { backgroundColor: log.type === 'task' ? colors.primary : colors.success }
-                    ]}>
-                      <Text style={styles.taskLogBadgeText}>
-                        {log.type === 'task' ? '💼 Task' : '☕ Break'}
-                      </Text>
+              sortedDays.slice(0, 7).map((dateKey) => {
+                const dayLogs = logsByDay[dateKey];
+                const dayWorkTime = dayLogs
+                  .filter(log => log.type === 'task')
+                  .reduce((sum, log) => sum + log.timeSpent, 0);
+                const dayBreakTime = dayLogs
+                  .filter(log => log.type === 'break')
+                  .reduce((sum, log) => sum + log.timeSpent, 0);
+
+                return (
+                  <View key={dateKey} style={styles.daySection}>
+                    <View style={styles.daySectionHeader}>
+                      <Text style={styles.daySectionDate}>{formatDateOnly(dayLogs[0].date)}</Text>
+                      <View style={styles.daySectionStats}>
+                        <Text style={styles.daySectionStatText}>
+                          💼 {formatTime(dayWorkTime)}
+                        </Text>
+                        <Text style={styles.daySectionStatText}>
+                          ☕ {formatTime(dayBreakTime)}
+                        </Text>
+                      </View>
                     </View>
-                    <Pressable onPress={() => deleteTaskLog(log.id)}>
-                      <IconSymbol name="trash" color={colors.secondary} size={18} />
-                    </Pressable>
+                    {dayLogs.map((log) => (
+                      <View key={log.id} style={styles.taskLogCard}>
+                        <View style={styles.taskLogHeader}>
+                          <View style={[
+                            styles.taskLogBadge,
+                            { backgroundColor: log.type === 'task' ? colors.primary : colors.success }
+                          ]}>
+                            <Text style={styles.taskLogBadgeText}>
+                              {log.type === 'task' ? '💼' : '☕'}
+                            </Text>
+                          </View>
+                          <Text style={styles.taskLogName}>{log.taskName}</Text>
+                          <Text style={styles.taskLogTime}>{formatTime(log.timeSpent)}</Text>
+                          <Pressable onPress={() => deleteTaskLog(log.id)}>
+                            <IconSymbol name="trash" color={colors.secondary} size={18} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))}
                   </View>
-                  <Text style={styles.taskLogName}>{log.taskName}</Text>
-                  <View style={styles.taskLogFooter}>
-                    <Text style={styles.taskLogTime}>{formatTime(log.timeSpent)}</Text>
-                    <Text style={styles.taskLogDate}>{formatDate(log.date)}</Text>
-                  </View>
-                </View>
-              ))
+                );
+              })
             )}
           </View>
 
@@ -626,6 +765,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  daySection: {
+    marginBottom: 20,
+  },
+  daySectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
+  },
+  daySectionDate: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  daySectionStats: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  daySectionStatText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
   taskLogCard: {
     backgroundColor: colors.highlight,
     borderRadius: 8,
@@ -636,39 +801,30 @@ const styles = StyleSheet.create({
   },
   taskLogHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: 12,
   },
   taskLogBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   taskLogBadgeText: {
-    fontSize: 12,
-    color: '#ffffff',
-    fontWeight: '600',
+    fontSize: 16,
   },
   taskLogName: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 8,
-  },
-  taskLogFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   taskLogTime: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.primary,
-  },
-  taskLogDate: {
-    fontSize: 12,
-    color: colors.textSecondary,
+    marginRight: 8,
   },
   entriesContainer: {
     marginTop: 24,
@@ -785,6 +941,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
+  },
+  dailyStatRow: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dailyStatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  dailyStatDate: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  dailyStatTotal: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  dailyStatDetails: {
+    gap: 4,
+  },
+  dailyStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dailyStatLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   reportRow: {
     flexDirection: 'row',

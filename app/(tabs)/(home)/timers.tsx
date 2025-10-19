@@ -7,6 +7,7 @@ import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import { notificationService } from "@/utils/notificationService";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
+import TimerPicker from "@/components/TimerPicker";
 
 interface Timer {
   id: string;
@@ -22,7 +23,9 @@ export default function TimersScreen() {
   const [timers, setTimers] = useState<Timer[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [timerName, setTimerName] = useState('');
-  const [timerMinutes, setTimerMinutes] = useState('25');
+  const [selectedHours, setSelectedHours] = useState(0);
+  const [selectedMinutes, setSelectedMinutes] = useState(25);
+  const [selectedSeconds, setSelectedSeconds] = useState(0);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const appState = useRef(AppState.currentState);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -179,19 +182,25 @@ export default function TimersScreen() {
     }
   };
 
+  const handleTimeChange = (hours: number, minutes: number, seconds: number) => {
+    setSelectedHours(hours);
+    setSelectedMinutes(minutes);
+    setSelectedSeconds(seconds);
+  };
+
   const addTimer = () => {
     if (!timerName.trim()) {
       Alert.alert('Error', 'Please enter a timer name');
       return;
     }
 
-    const minutes = parseInt(timerMinutes);
-    if (isNaN(minutes) || minutes <= 0) {
-      Alert.alert('Error', 'Please enter a valid duration');
+    const duration = (selectedHours * 3600) + (selectedMinutes * 60) + selectedSeconds;
+    
+    if (duration <= 0) {
+      Alert.alert('Error', 'Please set a duration greater than 0');
       return;
     }
 
-    const duration = minutes * 60;
     const newTimer: Timer = {
       id: Date.now().toString(),
       name: timerName,
@@ -202,7 +211,9 @@ export default function TimersScreen() {
 
     setTimers([...timers, newTimer]);
     setTimerName('');
-    setTimerMinutes('25');
+    setSelectedHours(0);
+    setSelectedMinutes(25);
+    setSelectedSeconds(0);
     setShowAddModal(false);
   };
 
@@ -280,6 +291,12 @@ export default function TimersScreen() {
 
   const getProgress = (timer: Timer): number => {
     return ((timer.duration - timer.remaining) / timer.duration) * 100;
+  };
+
+  const setPresetTime = (hours: number, minutes: number, seconds: number) => {
+    setSelectedHours(hours);
+    setSelectedMinutes(minutes);
+    setSelectedSeconds(seconds);
   };
 
   return (
@@ -403,37 +420,75 @@ export default function TimersScreen() {
                 </Pressable>
               </View>
 
-              <TextInput
-                style={commonStyles.input}
-                placeholder="Timer Name (e.g., Focus Session)"
-                placeholderTextColor={colors.textSecondary}
-                value={timerName}
-                onChangeText={setTimerName}
-              />
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <TextInput
+                  style={commonStyles.input}
+                  placeholder="Timer Name (e.g., Focus Session)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={timerName}
+                  onChangeText={setTimerName}
+                />
 
-              <TextInput
-                style={commonStyles.input}
-                placeholder="Duration (minutes)"
-                placeholderTextColor={colors.textSecondary}
-                keyboardType="numeric"
-                value={timerMinutes}
-                onChangeText={setTimerMinutes}
-              />
+                <Text style={styles.pickerLabel}>Set Duration:</Text>
+                <TimerPicker
+                  onTimeChange={handleTimeChange}
+                  initialHours={selectedHours}
+                  initialMinutes={selectedMinutes}
+                  initialSeconds={selectedSeconds}
+                />
 
-              <View style={styles.presetContainer}>
-                <Text style={styles.presetLabel}>Quick Presets:</Text>
-                <View style={styles.presetButtons}>
-                  {[5, 15, 25, 45, 60].map((minutes) => (
+                <View style={styles.presetContainer}>
+                  <Text style={styles.presetLabel}>Quick Presets:</Text>
+                  <View style={styles.presetButtons}>
                     <Pressable
-                      key={minutes}
                       style={styles.presetButton}
-                      onPress={() => setTimerMinutes(minutes.toString())}
+                      onPress={() => setPresetTime(0, 5, 0)}
                     >
-                      <Text style={styles.presetButtonText}>{minutes}m</Text>
+                      <Text style={styles.presetButtonText}>5 min</Text>
                     </Pressable>
-                  ))}
+                    <Pressable
+                      style={styles.presetButton}
+                      onPress={() => setPresetTime(0, 15, 0)}
+                    >
+                      <Text style={styles.presetButtonText}>15 min</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.presetButton}
+                      onPress={() => setPresetTime(0, 25, 0)}
+                    >
+                      <Text style={styles.presetButtonText}>25 min</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.presetButton}
+                      onPress={() => setPresetTime(0, 0, 30)}
+                    >
+                      <Text style={styles.presetButtonText}>30 sec</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.presetButton}
+                      onPress={() => setPresetTime(0, 1, 30)}
+                    >
+                      <Text style={styles.presetButtonText}>1:30</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.presetButton}
+                      onPress={() => setPresetTime(1, 0, 0)}
+                    >
+                      <Text style={styles.presetButtonText}>1 hour</Text>
+                    </Pressable>
+                  </View>
                 </View>
-              </View>
+
+                <View style={styles.selectedTimeDisplay}>
+                  <Text style={styles.selectedTimeLabel}>Selected Time:</Text>
+                  <Text style={styles.selectedTimeValue}>
+                    {selectedHours > 0 && `${selectedHours}h `}
+                    {selectedMinutes > 0 && `${selectedMinutes}m `}
+                    {selectedSeconds > 0 && `${selectedSeconds}s`}
+                    {selectedHours === 0 && selectedMinutes === 0 && selectedSeconds === 0 && '0s'}
+                  </Text>
+                </View>
+              </ScrollView>
 
               <Pressable style={buttonStyles.primary} onPress={addTimer}>
                 <Text style={buttonStyles.text}>Add Timer</Text>
@@ -579,6 +634,7 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -586,7 +642,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  pickerLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+    marginTop: 8,
+  },
   presetContainer: {
+    marginTop: 24,
     marginBottom: 16,
   },
   presetLabel: {
@@ -611,6 +675,25 @@ const styles = StyleSheet.create({
   presetButtonText: {
     fontSize: 14,
     fontWeight: '600',
+    color: colors.primary,
+  },
+  selectedTimeDisplay: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.highlight,
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  selectedTimeLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  selectedTimeValue: {
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.primary,
   },
 });
