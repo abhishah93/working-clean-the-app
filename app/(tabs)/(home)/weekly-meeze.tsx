@@ -12,6 +12,10 @@ interface Task {
   type: 'process' | 'immersive';
   miniTasks: MiniTask[];
   context: 'work' | 'home';
+  status: 'not_started' | 'in_progress' | 'completed';
+  completed: boolean;
+  startTime?: string;
+  endTime?: string;
 }
 
 interface MiniTask {
@@ -50,8 +54,11 @@ export default function WeeklyMeezeScreen() {
   const [showMiniTaskModal, setShowMiniTaskModal] = useState(false);
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskType, setNewTaskType] = useState<'process' | 'immersive'>('process');
+  const [newTaskStatus, setNewTaskStatus] = useState<'not_started' | 'in_progress' | 'completed'>('not_started');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [newMiniTaskText, setNewMiniTaskText] = useState('');
+  const [taskStartTime, setTaskStartTime] = useState('');
+  const [taskEndTime, setTaskEndTime] = useState('');
 
   useEffect(() => {
     loadData();
@@ -107,15 +114,44 @@ export default function WeeklyMeezeScreen() {
       type: newTaskType,
       miniTasks: [],
       context: context,
+      status: newTaskStatus,
+      completed: false,
+      startTime: taskStartTime || undefined,
+      endTime: taskEndTime || undefined,
     };
 
     setData({ ...data, tasks: [...data.tasks, newTask] });
     setNewTaskText('');
+    setNewTaskStatus('not_started');
+    setTaskStartTime('');
+    setTaskEndTime('');
     setShowTaskModal(false);
   };
 
   const deleteTask = (taskId: string) => {
     setData({ ...data, tasks: data.tasks.filter(t => t.id !== taskId) });
+  };
+
+  const toggleTaskCompletion = (taskId: string) => {
+    const updatedTasks = data.tasks.map(t => {
+      if (t.id === taskId) {
+        return { ...t, completed: !t.completed };
+      }
+      return t;
+    });
+
+    setData({ ...data, tasks: updatedTasks });
+  };
+
+  const updateTaskStatus = (taskId: string, status: 'not_started' | 'in_progress' | 'completed') => {
+    const updatedTasks = data.tasks.map(t => {
+      if (t.id === taskId) {
+        return { ...t, status };
+      }
+      return t;
+    });
+
+    setData({ ...data, tasks: updatedTasks });
   };
 
   const openMiniTaskModal = (task: Task) => {
@@ -184,6 +220,32 @@ export default function WeeklyMeezeScreen() {
     const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
     return `${startStr} - ${endStr}`;
+  };
+
+  const getStatusColor = (status: 'not_started' | 'in_progress' | 'completed') => {
+    switch (status) {
+      case 'not_started':
+        return colors.textSecondary;
+      case 'in_progress':
+        return colors.accent;
+      case 'completed':
+        return colors.success;
+      default:
+        return colors.textSecondary;
+    }
+  };
+
+  const getStatusLabel = (status: 'not_started' | 'in_progress' | 'completed') => {
+    switch (status) {
+      case 'not_started':
+        return 'Not Started';
+      case 'in_progress':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
+      default:
+        return 'Not Started';
+    }
   };
 
   return (
@@ -314,15 +376,81 @@ export default function WeeklyMeezeScreen() {
             {data.tasks.map((task) => (
               <View key={task.id} style={styles.taskCard}>
                 <View style={styles.taskMainRow}>
+                  {/* Completion Checkbox */}
+                  <Pressable
+                    style={[
+                      styles.completionCheckbox,
+                      task.completed && styles.completionCheckboxChecked
+                    ]}
+                    onPress={() => toggleTaskCompletion(task.id)}
+                  >
+                    {task.completed && (
+                      <IconSymbol name="checkmark" color="#ffffff" size={18} />
+                    )}
+                  </Pressable>
+
                   <View style={styles.taskContent}>
-                    <Text style={styles.taskText}>{task.text}</Text>
-                    <View style={[
-                      styles.taskTypeBadge,
-                      { backgroundColor: task.type === 'process' ? colors.primary : colors.accent }
+                    <Text style={[
+                      styles.taskText,
+                      task.completed && styles.taskTextCompleted
                     ]}>
-                      <Text style={styles.taskTypeText}>
-                        {task.type === 'process' ? '⚙️ Process' : '🎨 Immersive'}
-                      </Text>
+                      {task.text}
+                    </Text>
+                    <View style={styles.taskBadges}>
+                      <View style={[
+                        styles.taskTypeBadge,
+                        { backgroundColor: task.type === 'process' ? colors.primary : colors.accent }
+                      ]}>
+                        <Text style={styles.taskTypeText}>
+                          {task.type === 'process' ? '⚙️ Process' : '🎨 Immersive'}
+                        </Text>
+                      </View>
+                      <View style={[
+                        styles.taskTypeBadge,
+                        { backgroundColor: getStatusColor(task.status || 'not_started') }
+                      ]}>
+                        <Text style={styles.taskTypeText}>
+                          {getStatusLabel(task.status || 'not_started')}
+                        </Text>
+                      </View>
+                      {(task.startTime || task.endTime) && (
+                        <View style={[styles.taskTypeBadge, { backgroundColor: colors.success }]}>
+                          <Text style={styles.taskTypeText}>
+                            🕐 {task.startTime || '?'} - {task.endTime || '?'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Status Selector */}
+                    <View style={styles.statusSelectorInline}>
+                      <Pressable
+                        style={[
+                          styles.statusButtonInline,
+                          task.status === 'not_started' && styles.statusButtonInlineActive
+                        ]}
+                        onPress={() => updateTaskStatus(task.id, 'not_started')}
+                      >
+                        <Text style={styles.statusButtonTextInline}>Not Started</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[
+                          styles.statusButtonInline,
+                          task.status === 'in_progress' && styles.statusButtonInlineActive
+                        ]}
+                        onPress={() => updateTaskStatus(task.id, 'in_progress')}
+                      >
+                        <Text style={styles.statusButtonTextInline}>In Progress</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[
+                          styles.statusButtonInline,
+                          task.status === 'completed' && styles.statusButtonInlineActive
+                        ]}
+                        onPress={() => updateTaskStatus(task.id, 'completed')}
+                      >
+                        <Text style={styles.statusButtonTextInline}>Completed</Text>
+                      </Pressable>
                     </View>
                   </View>
                   <View style={styles.taskActions}>
@@ -435,56 +563,132 @@ export default function WeeklyMeezeScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={commonStyles.title}>Add Task</Text>
-                <Pressable onPress={() => setShowTaskModal(false)}>
-                  <IconSymbol name="xmark" color={colors.text} size={24} />
-                </Pressable>
-              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalHeader}>
+                  <Text style={commonStyles.title}>Add Task</Text>
+                  <Pressable onPress={() => setShowTaskModal(false)}>
+                    <IconSymbol name="xmark" color={colors.text} size={24} />
+                  </Pressable>
+                </View>
 
-              <TextInput
-                style={commonStyles.input}
-                placeholder="Task description"
-                placeholderTextColor={colors.textSecondary}
-                value={newTaskText}
-                onChangeText={setNewTaskText}
-              />
+                <TextInput
+                  style={commonStyles.input}
+                  placeholder="Task description"
+                  placeholderTextColor={colors.textSecondary}
+                  value={newTaskText}
+                  onChangeText={setNewTaskText}
+                />
 
-              <Text style={styles.modalLabel}>Task Type:</Text>
-              <View style={styles.taskTypeSelector}>
-                <Pressable
-                  style={[
-                    styles.taskTypeOption,
-                    newTaskType === 'process' && styles.taskTypeOptionActive
-                  ]}
-                  onPress={() => setNewTaskType('process')}
-                >
-                  <Text style={[
-                    styles.taskTypeOptionText,
-                    newTaskType === 'process' && styles.taskTypeOptionTextActive
-                  ]}>
-                    ⚙️ Process
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.taskTypeOption,
-                    newTaskType === 'immersive' && styles.taskTypeOptionActive
-                  ]}
-                  onPress={() => setNewTaskType('immersive')}
-                >
-                  <Text style={[
-                    styles.taskTypeOptionText,
-                    newTaskType === 'immersive' && styles.taskTypeOptionTextActive
-                  ]}>
-                    🎨 Immersive
-                  </Text>
-                </Pressable>
-              </View>
+                <Text style={styles.modalLabel}>Task Type:</Text>
+                <View style={styles.taskTypeSelector}>
+                  <Pressable
+                    style={[
+                      styles.taskTypeOption,
+                      newTaskType === 'process' && styles.taskTypeOptionActive
+                    ]}
+                    onPress={() => setNewTaskType('process')}
+                  >
+                    <Text style={[
+                      styles.taskTypeOptionText,
+                      newTaskType === 'process' && styles.taskTypeOptionTextActive
+                    ]}>
+                      ⚙️ Process
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.taskTypeOption,
+                      newTaskType === 'immersive' && styles.taskTypeOptionActive
+                    ]}
+                    onPress={() => setNewTaskType('immersive')}
+                  >
+                    <Text style={[
+                      styles.taskTypeOptionText,
+                      newTaskType === 'immersive' && styles.taskTypeOptionTextActive
+                    ]}>
+                      🎨 Immersive
+                    </Text>
+                  </Pressable>
+                </View>
 
-              <Pressable style={buttonStyles.primary} onPress={addTask}>
-                <Text style={buttonStyles.text}>Add Task</Text>
-              </Pressable>
+                <Text style={styles.modalLabel}>Status:</Text>
+                <View style={styles.taskTypeSelector}>
+                  <Pressable
+                    style={[
+                      styles.taskTypeOption,
+                      newTaskStatus === 'not_started' && styles.taskTypeOptionActive
+                    ]}
+                    onPress={() => setNewTaskStatus('not_started')}
+                  >
+                    <Text style={[
+                      styles.taskTypeOptionText,
+                      newTaskStatus === 'not_started' && styles.taskTypeOptionTextActive
+                    ]}>
+                      Not Started
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.taskTypeOption,
+                      newTaskStatus === 'in_progress' && styles.taskTypeOptionActive
+                    ]}
+                    onPress={() => setNewTaskStatus('in_progress')}
+                  >
+                    <Text style={[
+                      styles.taskTypeOptionText,
+                      newTaskStatus === 'in_progress' && styles.taskTypeOptionTextActive
+                    ]}>
+                      In Progress
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.taskTypeOption,
+                      newTaskStatus === 'completed' && styles.taskTypeOptionActive
+                    ]}
+                    onPress={() => setNewTaskStatus('completed')}
+                  >
+                    <Text style={[
+                      styles.taskTypeOptionText,
+                      newTaskStatus === 'completed' && styles.taskTypeOptionTextActive
+                    ]}>
+                      Completed
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.modalLabel}>Time Range (Optional):</Text>
+                <Text style={styles.helpText}>
+                  Enter times like: 1 PM, 3:30 PM, 9 AM, etc.
+                </Text>
+                <View style={styles.timeInputRow}>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeInputLabel}>Start</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      placeholder="1 PM"
+                      placeholderTextColor={colors.textSecondary}
+                      value={taskStartTime}
+                      onChangeText={setTaskStartTime}
+                    />
+                  </View>
+                  <Text style={styles.timeSeparator}>-</Text>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeInputLabel}>End</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      placeholder="3 PM"
+                      placeholderTextColor={colors.textSecondary}
+                      value={taskEndTime}
+                      onChangeText={setTaskEndTime}
+                    />
+                  </View>
+                </View>
+
+                <Pressable style={buttonStyles.primary} onPress={addTask}>
+                  <Text style={buttonStyles.text}>Add Task</Text>
+                </Pressable>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -629,8 +833,22 @@ const styles = StyleSheet.create({
   },
   taskMainRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: 12,
+  },
+  completionCheckbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  completionCheckboxChecked: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
   },
   taskContent: {
     flex: 1,
@@ -641,16 +859,47 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 8,
   },
+  taskTextCompleted: {
+    textDecorationLine: 'line-through',
+    color: colors.textSecondary,
+  },
+  taskBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
   taskTypeBadge: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    alignSelf: 'flex-start',
   },
   taskTypeText: {
     fontSize: 12,
     color: '#ffffff',
     fontWeight: '600',
+  },
+  statusSelectorInline: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  statusButtonInline: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  statusButtonInlineActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  statusButtonTextInline: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.text,
   },
   taskActions: {
     flexDirection: 'row',
@@ -721,14 +970,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
+    marginTop: 8,
+  },
+  helpText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+    fontStyle: 'italic',
   },
   taskTypeSelector: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 16,
+    flexWrap: 'wrap',
   },
   taskTypeOption: {
     flex: 1,
+    minWidth: 100,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
@@ -747,6 +1005,38 @@ const styles = StyleSheet.create({
   },
   taskTypeOptionTextActive: {
     color: colors.primary,
+  },
+  timeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  timeInputContainer: {
+    flex: 1,
+  },
+  timeInputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  timeInput: {
+    backgroundColor: colors.highlight,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  timeSeparator: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 20,
   },
   selectedTaskText: {
     fontSize: 16,

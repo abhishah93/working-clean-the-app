@@ -17,6 +17,7 @@ interface CalendarEvent {
   type?: 'process' | 'immersive';
   context: 'work' | 'home';
   linkedTaskId?: string;
+  status: 'not_started' | 'in_progress' | 'completed';
 }
 
 export default function WeeklyCalendarScreen() {
@@ -32,6 +33,7 @@ export default function WeeklyCalendarScreen() {
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventType, setEventType] = useState<'process' | 'immersive'>('process');
+  const [eventStatus, setEventStatus] = useState<'not_started' | 'in_progress' | 'completed'>('not_started');
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
   const [selectedWeek, setSelectedWeek] = useState(0);
   
@@ -211,6 +213,7 @@ export default function WeeklyCalendarScreen() {
     setEventTitle('');
     setEventDescription('');
     setEventType('process');
+    setEventStatus('not_started');
     setEditingEvent(null);
     setUseManualTimeInput(false);
     setModalVisible(true);
@@ -234,6 +237,7 @@ export default function WeeklyCalendarScreen() {
     setEventTitle(event.title);
     setEventDescription(event.description);
     setEventType(event.type || 'process');
+    setEventStatus(event.status || 'not_started');
     setEditingEvent(event);
     setUseManualTimeInput(false);
     setModalVisible(true);
@@ -291,6 +295,7 @@ export default function WeeklyCalendarScreen() {
       description: eventDescription,
       type: eventType,
       context: context,
+      status: eventStatus,
     };
 
     // Check for overlaps
@@ -408,54 +413,115 @@ export default function WeeklyCalendarScreen() {
 
   const linkTasksFromMeezes = async () => {
     try {
+      // Get current date for the week
+      const today = new Date();
+      const currentWeekStart = new Date(today);
+      currentWeekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+      
       // Load tasks from daily and weekly meezes
-      const dailyMeezeData = await AsyncStorage.getItem(`daily-meeze-${context}-${new Date().toISOString().split('T')[0]}`);
-      const weeklyMeezeData = await AsyncStorage.getItem(`weekly-meeze-${context}-${new Date().toISOString().split('T')[0]}`);
+      const linkedEvents: CalendarEvent[] = [];
       
-      const tasks: any[] = [];
-      
-      if (dailyMeezeData) {
-        const dailyData = JSON.parse(dailyMeezeData);
-        tasks.push(...(dailyData.tasks || []));
+      // Check each day of the week for daily meeze tasks
+      for (let i = 0; i < 7; i++) {
+        const checkDate = new Date(currentWeekStart);
+        checkDate.setDate(currentWeekStart.getDate() + i);
+        const dateStr = checkDate.toISOString().split('T')[0];
+        
+        const dailyMeezeData = await AsyncStorage.getItem(`daily-meeze-${context}-${dateStr}`);
+        
+        if (dailyMeezeData) {
+          const dailyData = JSON.parse(dailyMeezeData);
+          const tasks = dailyData.tasks || [];
+          
+          tasks.forEach((task: any) => {
+            // Parse scheduled time if available
+            let startTime = '09:00';
+            let endTime = '10:00';
+            
+            if (task.scheduledTime) {
+              const parsed = parseManualTime(task.scheduledTime);
+              if (parsed) {
+                startTime = `${parsed.hours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
+                // Default 1 hour duration
+                const endHours = parsed.hours + 1;
+                endTime = `${endHours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
+              }
+            }
+            
+            linkedEvents.push({
+              id: `linked-daily-${dateStr}-${task.id}`,
+              dayOfWeek: i, // Day of week (0 = Sunday)
+              startTime: startTime,
+              endTime: endTime,
+              title: task.text,
+              description: `From Daily Meeze - ${task.type === 'process' ? 'Process Task' : 'Immersive Task'}`,
+              type: task.type,
+              context: context,
+              linkedTaskId: task.id,
+              status: task.status || 'not_started',
+            });
+          });
+        }
       }
+      
+      // Load weekly meeze tasks
+      const weekStartStr = currentWeekStart.toISOString().split('T')[0];
+      const weeklyMeezeData = await AsyncStorage.getItem(`weekly-meeze-${context}-${weekStartStr}`);
       
       if (weeklyMeezeData) {
         const weeklyData = JSON.parse(weeklyMeezeData);
-        tasks.push(...(weeklyData.tasks || []));
+        const tasks = weeklyData.tasks || [];
+        
+        tasks.forEach((task: any, index: number) => {
+          // Parse scheduled time if available
+          let startTime = '09:00';
+          let endTime = '10:00';
+          
+          if (task.scheduledTime) {
+            const parsed = parseManualTime(task.scheduledTime);
+            if (parsed) {
+              startTime = `${parsed.hours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
+              // Default 1 hour duration
+              const endHours = parsed.hours + 1;
+              endTime = `${endHours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
+            }
+          }
+          
+          linkedEvents.push({
+            id: `linked-weekly-${weekStartStr}-${task.id}`,
+            dayOfWeek: 1, // Default to Monday for weekly tasks
+            startTime: startTime,
+            endTime: endTime,
+            title: task.text,
+            description: `From Weekly Meeze - ${task.type === 'process' ? 'Process Task' : 'Immersive Task'}`,
+            type: task.type,
+            context: context,
+            linkedTaskId: task.id,
+            status: task.status || 'not_started',
+          });
+        });
       }
       
-      if (tasks.length === 0) {
+      if (linkedEvents.length === 0) {
         Alert.alert('No Tasks', 'No tasks found in your meezes to link.');
         return;
       }
       
       Alert.alert(
         'Link Tasks',
-        `Found ${tasks.length} task(s). These will be added to your calendar. You can then drag them to schedule them.`,
+        `Found ${linkedEvents.length} task(s). These will be added to your calendar on the correct days. You can then drag them to reschedule.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Link',
             onPress: () => {
-              const newEvents: CalendarEvent[] = tasks.map((task, index) => ({
-                id: `linked-${Date.now()}-${index}`,
-                dayOfWeek: 1, // Default to Monday
-                startTime: '09:00',
-                endTime: '10:00',
-                title: task.text,
-                description: task.type === 'process' ? 'Process Task' : 'Immersive Task',
-                type: task.type,
-                context: context,
-                linkedTaskId: task.id,
-              }));
-              
-              const updatedEvents = [...events, ...newEvents].sort((a, b) => {
+              const updatedEvents = [...events, ...linkedEvents].sort((a, b) => {
                 if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
                 return a.startTime.localeCompare(b.startTime);
               });
               
               saveEvents(updatedEvents);
-              Alert.alert('Success', 'Tasks linked to calendar. Drag them to schedule!');
+              Alert.alert('Success', 'Tasks linked to calendar on the correct days. Drag them to reschedule!');
             },
           },
         ]
@@ -463,6 +529,32 @@ export default function WeeklyCalendarScreen() {
     } catch (error) {
       console.error('Error linking tasks:', error);
       Alert.alert('Error', 'Failed to link tasks from meezes.');
+    }
+  };
+
+  const getStatusColor = (status: 'not_started' | 'in_progress' | 'completed') => {
+    switch (status) {
+      case 'not_started':
+        return colors.textSecondary;
+      case 'in_progress':
+        return colors.accent;
+      case 'completed':
+        return colors.success;
+      default:
+        return colors.textSecondary;
+    }
+  };
+
+  const getStatusLabel = (status: 'not_started' | 'in_progress' | 'completed') => {
+    switch (status) {
+      case 'not_started':
+        return 'Not Started';
+      case 'in_progress':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
+      default:
+        return 'Not Started';
     }
   };
 
@@ -591,7 +683,7 @@ export default function WeeklyCalendarScreen() {
                         key={dayIndex}
                         style={[
                           styles.dayColumn,
-                          isOccupied && styles.dayColumnOccupied,
+                          !isOccupied && styles.dayColumnEmpty,
                           isBeingMoved && styles.dayColumnBeingMoved,
                           draggedEvent && !isOccupied && styles.dayColumnDropTarget,
                         ]}
@@ -604,6 +696,12 @@ export default function WeeklyCalendarScreen() {
                             <Text style={styles.eventTime}>
                               {convertTo12Hour(event.startTime)} - {convertTo12Hour(event.endTime)}
                             </Text>
+                            
+                            {/* Status Bar */}
+                            <View style={[styles.statusBar, { backgroundColor: getStatusColor(event.status) }]}>
+                              <Text style={styles.statusText}>{getStatusLabel(event.status)}</Text>
+                            </View>
+                            
                             {event.type && (
                               <View style={[
                                 styles.eventTypeBadge,
@@ -614,12 +712,6 @@ export default function WeeklyCalendarScreen() {
                                 </Text>
                               </View>
                             )}
-                            <Pressable
-                              style={styles.deleteButton}
-                              onPress={() => deleteEvent(event.id)}
-                            >
-                              <IconSymbol name="trash" color={colors.secondary} size={14} />
-                            </Pressable>
                           </View>
                         ) : null}
                       </Pressable>
@@ -859,11 +951,70 @@ export default function WeeklyCalendarScreen() {
                   </Pressable>
                 </View>
 
+                <Text style={styles.modalLabel}>Status:</Text>
+                <View style={styles.statusSelector}>
+                  <Pressable
+                    style={[
+                      styles.statusOption,
+                      eventStatus === 'not_started' && styles.statusOptionActive
+                    ]}
+                    onPress={() => setEventStatus('not_started')}
+                  >
+                    <Text style={[
+                      styles.statusOptionText,
+                      eventStatus === 'not_started' && styles.statusOptionTextActive
+                    ]}>
+                      Not Started
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.statusOption,
+                      eventStatus === 'in_progress' && styles.statusOptionActive
+                    ]}
+                    onPress={() => setEventStatus('in_progress')}
+                  >
+                    <Text style={[
+                      styles.statusOptionText,
+                      eventStatus === 'in_progress' && styles.statusOptionTextActive
+                    ]}>
+                      In Progress
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.statusOption,
+                      eventStatus === 'completed' && styles.statusOptionActive
+                    ]}
+                    onPress={() => setEventStatus('completed')}
+                  >
+                    <Text style={[
+                      styles.statusOptionText,
+                      eventStatus === 'completed' && styles.statusOptionTextActive
+                    ]}>
+                      Completed
+                    </Text>
+                  </Pressable>
+                </View>
+
                 <Pressable style={buttonStyles.primary} onPress={saveEvent}>
                   <Text style={buttonStyles.text}>
                     {editingEvent ? 'Update Event' : 'Add Event'}
                   </Text>
                 </Pressable>
+
+                {editingEvent && (
+                  <Pressable 
+                    style={[buttonStyles.secondary, { backgroundColor: colors.secondary, marginTop: 12 }]} 
+                    onPress={() => {
+                      setModalVisible(false);
+                      deleteEvent(editingEvent.id);
+                    }}
+                  >
+                    <IconSymbol name="trash" color="#ffffff" size={20} />
+                    <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Delete Event</Text>
+                  </Pressable>
+                )}
               </ScrollView>
             </View>
           </View>
@@ -991,17 +1142,15 @@ const styles = StyleSheet.create({
   dayColumn: {
     width: 120,
     height: 60,
-    backgroundColor: colors.card,
     borderRadius: 6,
     marginRight: 4,
     padding: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
     position: 'relative',
   },
-  dayColumnOccupied: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
+  dayColumnEmpty: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   dayColumnBeingMoved: {
     opacity: 0.5,
@@ -1037,6 +1186,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 4,
   },
+  statusBar: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
+  statusText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+  },
   eventTypeBadge: {
     position: 'absolute',
     top: 4,
@@ -1049,12 +1211,6 @@ const styles = StyleSheet.create({
   },
   eventTypeText: {
     fontSize: 10,
-  },
-  deleteButton: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    padding: 2,
   },
   modalOverlay: {
     flex: 1,
@@ -1213,6 +1369,31 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   typeOptionTextActive: {
+    color: colors.primary,
+  },
+  statusSelector: {
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 16,
+  },
+  statusOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  statusOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.highlight,
+  },
+  statusOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  statusOptionTextActive: {
     color: colors.primary,
   },
 });
