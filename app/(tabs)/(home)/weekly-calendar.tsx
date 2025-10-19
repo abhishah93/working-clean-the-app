@@ -434,6 +434,7 @@ export default function WeeklyCalendarScreen() {
           onPress: () => {
             const updatedEvents = events.filter(e => e.id !== eventId);
             saveEvents(updatedEvents);
+            setModalVisible(false);
           },
         },
       ]
@@ -956,6 +957,7 @@ export default function WeeklyCalendarScreen() {
                       style={styles.timePickerButton}
                       onPress={() => setShowStartTimePicker(true)}
                     >
+                      <IconSymbol name="clock" color={colors.primary} size={20} />
                       <Text style={styles.timePickerText}>
                         {convertTo12Hour(`${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`)}
                       </Text>
@@ -983,6 +985,7 @@ export default function WeeklyCalendarScreen() {
                       style={styles.timePickerButton}
                       onPress={() => setShowEndTimePicker(true)}
                     >
+                      <IconSymbol name="clock" color={colors.primary} size={20} />
                       <Text style={styles.timePickerText}>
                         {convertTo12Hour(`${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`)}
                       </Text>
@@ -1112,10 +1115,7 @@ export default function WeeklyCalendarScreen() {
                 {editingEvent && (
                   <Pressable 
                     style={[buttonStyles.secondary, { backgroundColor: colors.secondary, marginTop: 12 }]} 
-                    onPress={() => {
-                      setModalVisible(false);
-                      deleteEvent(editingEvent.id);
-                    }}
+                    onPress={() => deleteEvent(editingEvent.id)}
                   >
                     <IconSymbol name="trash" color="#ffffff" size={20} />
                     <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Delete Event</Text>
@@ -1449,18 +1449,21 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   timePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.highlight,
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: 12,
   },
   timePickerText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
-    textAlign: 'center',
+    flex: 1,
   },
   typeSelector: {
     flexDirection: 'row',

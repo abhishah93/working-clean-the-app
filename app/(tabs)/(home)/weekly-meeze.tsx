@@ -129,7 +129,20 @@ export default function WeeklyMeezeScreen() {
   };
 
   const deleteTask = (taskId: string) => {
-    setData({ ...data, tasks: data.tasks.filter(t => t.id !== taskId) });
+    Alert.alert(
+      'Delete Task',
+      'Are you sure you want to delete this task?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setData({ ...data, tasks: data.tasks.filter(t => t.id !== taskId) });
+          },
+        },
+      ]
+    );
   };
 
   const toggleTaskCompletion = (taskId: string) => {
@@ -452,20 +465,24 @@ export default function WeeklyMeezeScreen() {
                         <Text style={styles.statusButtonTextInline}>Completed</Text>
                       </Pressable>
                     </View>
-                  </View>
-                  <View style={styles.taskActions}>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => openMiniTaskModal(task)}
-                    >
-                      <IconSymbol name="list.bullet" color={colors.primary} size={20} />
-                    </Pressable>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => deleteTask(task.id)}
-                    >
-                      <IconSymbol name="trash" color={colors.secondary} size={20} />
-                    </Pressable>
+
+                    {/* Action Buttons Row */}
+                    <View style={styles.taskActionsRow}>
+                      <Pressable
+                        style={styles.taskActionButtonWithLabel}
+                        onPress={() => openMiniTaskModal(task)}
+                      >
+                        <IconSymbol name="list.bullet" color={colors.primary} size={24} />
+                        <Text style={styles.taskActionLabel}>Breakdown</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.taskActionButtonWithLabel}
+                        onPress={() => deleteTask(task.id)}
+                      >
+                        <IconSymbol name="trash.fill" color={colors.secondary} size={24} />
+                        <Text style={styles.taskActionLabel}>Delete</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
                 
@@ -883,6 +900,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     flexWrap: 'wrap',
+    marginBottom: 12,
   },
   statusButtonInline: {
     paddingHorizontal: 10,
@@ -901,12 +919,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
-  taskActions: {
+  taskActionsRow: {
     flexDirection: 'row',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
   },
-  taskActionButton: {
-    padding: 4,
+  taskActionButtonWithLabel: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    minWidth: 60,
+  },
+  taskActionLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 4,
+    textAlign: 'center',
   },
   miniTasksContainer: {
     marginTop: 12,

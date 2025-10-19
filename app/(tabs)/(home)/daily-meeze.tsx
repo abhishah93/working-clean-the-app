@@ -973,44 +973,45 @@ export default function DailyMeezeScreen() {
                         <Text style={styles.statusButtonTextInline}>Completed</Text>
                       </Pressable>
                     </View>
-                  </View>
-                  <View style={styles.taskActions}>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => moveTaskToPreviousDay(task.id)}
-                    >
-                      <IconSymbol name="arrow.left.circle" color={colors.accent} size={20} />
-                    </Pressable>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => moveTaskToNextDay(task.id)}
-                    >
-                      <IconSymbol name="arrow.right.circle" color={colors.accent} size={20} />
-                    </Pressable>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => openMoveTaskModal(task)}
-                    >
-                      <IconSymbol name="calendar.badge.clock" color={colors.primary} size={20} />
-                    </Pressable>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => openScheduleModal(task)}
-                    >
-                      <IconSymbol name="clock" color={colors.accent} size={20} />
-                    </Pressable>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => openMiniTaskModal(task)}
-                    >
-                      <IconSymbol name="list.bullet" color={colors.primary} size={20} />
-                    </Pressable>
-                    <Pressable
-                      style={styles.taskActionButton}
-                      onPress={() => deleteTask(task.id)}
-                    >
-                      <IconSymbol name="trash" color={colors.secondary} size={20} />
-                    </Pressable>
+
+                    {/* Action Buttons Row */}
+                    <View style={styles.taskActionsRow}>
+                      <Pressable
+                        style={styles.taskActionButtonWithLabel}
+                        onPress={() => moveTaskToPreviousDay(task.id)}
+                      >
+                        <IconSymbol name="arrow.left.circle.fill" color={colors.accent} size={24} />
+                        <Text style={styles.taskActionLabel}>Prev Day</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.taskActionButtonWithLabel}
+                        onPress={() => moveTaskToNextDay(task.id)}
+                      >
+                        <IconSymbol name="arrow.right.circle.fill" color={colors.accent} size={24} />
+                        <Text style={styles.taskActionLabel}>Next Day</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.taskActionButtonWithLabel}
+                        onPress={() => openMoveTaskModal(task)}
+                      >
+                        <IconSymbol name="calendar.badge.clock" color={colors.primary} size={24} />
+                        <Text style={styles.taskActionLabel}>Move</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.taskActionButtonWithLabel}
+                        onPress={() => openMiniTaskModal(task)}
+                      >
+                        <IconSymbol name="list.bullet" color={colors.primary} size={24} />
+                        <Text style={styles.taskActionLabel}>Breakdown</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.taskActionButtonWithLabel}
+                        onPress={() => deleteTask(task.id)}
+                      >
+                        <IconSymbol name="trash.fill" color={colors.secondary} size={24} />
+                        <Text style={styles.taskActionLabel}>Delete</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
                 
@@ -1318,66 +1319,6 @@ export default function DailyMeezeScreen() {
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* Schedule Time Modal */}
-        <Modal
-          visible={showScheduleModal}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setShowScheduleModal(false)}
-        >
-          <KeyboardAvoidingView 
-            style={styles.modalOverlay}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          >
-            <View style={styles.modalContent}>
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                <View style={styles.modalHeader}>
-                  <Text style={commonStyles.title}>Schedule Task</Text>
-                  <Pressable onPress={() => setShowScheduleModal(false)}>
-                    <IconSymbol name="xmark" color={colors.text} size={24} />
-                  </Pressable>
-                </View>
-
-                {selectedTask && (
-                  <Text style={styles.selectedTaskText}>{selectedTask.text}</Text>
-                )}
-
-                <Text style={styles.modalLabel}>Time Range:</Text>
-                <Text style={styles.helpText}>
-                  Enter times like: 1 PM, 3:30 PM, 9 AM, etc.
-                </Text>
-                <View style={styles.timeInputRow}>
-                  <View style={styles.timeInputContainer}>
-                    <Text style={styles.timeInputLabel}>Start</Text>
-                    <TextInput
-                      style={styles.timeInput}
-                      placeholder="1 PM"
-                      placeholderTextColor={colors.textSecondary}
-                      value={taskStartTime}
-                      onChangeText={setTaskStartTime}
-                    />
-                  </View>
-                  <Text style={styles.timeSeparator}>-</Text>
-                  <View style={styles.timeInputContainer}>
-                    <Text style={styles.timeInputLabel}>End</Text>
-                    <TextInput
-                      style={styles.timeInput}
-                      placeholder="3 PM"
-                      placeholderTextColor={colors.textSecondary}
-                      value={taskEndTime}
-                      onChangeText={setTaskEndTime}
-                    />
-                  </View>
-                </View>
-
-                <Pressable style={buttonStyles.primary} onPress={saveScheduledTime}>
-                  <Text style={buttonStyles.text}>Save Time</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-
         {/* Mini Tasks Modal */}
         <Modal
           visible={showMiniTaskModal}
@@ -1578,6 +1519,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     flexWrap: 'wrap',
+    marginBottom: 12,
   },
   statusButtonInline: {
     paddingHorizontal: 10,
@@ -1596,12 +1538,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
-  taskActions: {
-    flexDirection: 'column',
-    gap: 8,
+  taskActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
   },
-  taskActionButton: {
-    padding: 4,
+  taskActionButtonWithLabel: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    minWidth: 60,
+  },
+  taskActionLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 4,
+    textAlign: 'center',
   },
   miniTasksContainer: {
     marginTop: 12,
