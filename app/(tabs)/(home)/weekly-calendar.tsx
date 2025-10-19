@@ -9,14 +9,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface CalendarEvent {
   id: string;
-  dayOfWeek: number; // 0 = Sunday, 6 = Saturday
-  startTime: string; // HH:mm format (24-hour)
-  endTime: string; // HH:mm format (24-hour)
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
   title: string;
   description: string;
   type?: 'process' | 'immersive';
   context: 'work' | 'home';
   linkedTaskId?: string;
+  linkedTaskDate?: string;
   status: 'not_started' | 'in_progress' | 'completed';
 }
 
@@ -37,14 +38,12 @@ export default function WeeklyCalendarScreen() {
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null);
   const [selectedWeek, setSelectedWeek] = useState(0);
   
-  // Manual time input states
   const [useManualTimeInput, setUseManualTimeInput] = useState(false);
   const [manualStartTime, setManualStartTime] = useState('');
   const [manualEndTime, setManualEndTime] = useState('');
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  // Generate time slots in 15-minute increments
   const generateTimeSlots = () => {
     const slots: string[] = [];
     for (let hour = 0; hour < 24; hour++) {
@@ -81,8 +80,61 @@ export default function WeeklyCalendarScreen() {
       await AsyncStorage.setItem(`weekly-calendar-${context}-week${selectedWeek}`, JSON.stringify(updatedEvents));
       console.log('Saved weekly calendar events for', context, 'week', selectedWeek);
       setEvents(updatedEvents);
+      
+      // Sync changes back to daily meeze
+      await syncEventsToMeezes(updatedEvents);
     } catch (error) {
       console.error('Error saving weekly calendar events:', error);
+    }
+  };
+
+  const syncEventsToMeezes = async (events: CalendarEvent[]) => {
+    try {
+      // Get current week start date
+      const today = new Date();
+      const currentWeekStart = new Date(today);
+      currentWeekStart.setDate(today.getDate() - today.getDay());
+      
+      // Group events by day
+      for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+        const dayEvents = events.filter(e => e.dayOfWeek === dayOfWeek && e.linkedTaskId);
+        
+        if (dayEvents.length === 0) continue;
+        
+        // Calculate the date for this day
+        const dayDate = new Date(currentWeekStart);
+        dayDate.setDate(currentWeekStart.getDate() + dayOfWeek);
+        const dateStr = dayDate.toISOString().split('T')[0];
+        
+        // Load daily meeze for this day
+        const dailyMeezeData = await AsyncStorage.getItem(`daily-meeze-${context}-${dateStr}`);
+        if (!dailyMeezeData) continue;
+        
+        const dailyMeeze = JSON.parse(dailyMeezeData);
+        
+        // Update tasks with changes from calendar
+        const updatedTasks = dailyMeeze.tasks.map((task: any) => {
+          const linkedEvent = dayEvents.find(e => e.linkedTaskId === task.id);
+          if (linkedEvent) {
+            return {
+              ...task,
+              text: linkedEvent.title,
+              status: linkedEvent.status,
+              type: linkedEvent.type || task.type,
+              startTime: convertTo12Hour(linkedEvent.startTime),
+              endTime: convertTo12Hour(linkedEvent.endTime),
+              linkedEventId: linkedEvent.id,
+            };
+          }
+          return task;
+        });
+        
+        dailyMeeze.tasks = updatedTasks;
+        await AsyncStorage.setItem(`daily-meeze-${context}-${dateStr}`, JSON.stringify(dailyMeeze));
+        console.log('Synced calendar changes to daily meeze for', dateStr);
+      }
+    } catch (error) {
+      console.error('Error syncing events to meezes:', error);
     }
   };
 
@@ -98,55 +150,43 @@ export default function WeeklyCalendarScreen() {
     return hours * 60 + minutes;
   };
 
-  // Parse manual time input (e.g., "7:15 AM", "7:15 am", "715am", "7:15")
   const parseManualTime = (timeStr: string): { hours: number; minutes: number } | null => {
     try {
-      // Remove extra spaces and convert to lowercase
       const cleaned = timeStr.trim().toLowerCase().replace(/\s+/g, ' ');
       
-      // Check for AM/PM
       const isPM = cleaned.includes('pm');
       const isAM = cleaned.includes('am');
       
-      // Remove AM/PM from string
       const timeOnly = cleaned.replace(/am|pm/g, '').trim();
       
-      // Parse different formats
       let hours = 0;
       let minutes = 0;
       
       if (timeOnly.includes(':')) {
-        // Format: "7:15" or "07:15"
         const parts = timeOnly.split(':');
         hours = parseInt(parts[0], 10);
         minutes = parseInt(parts[1], 10);
       } else {
-        // Format: "715" or "7"
         const num = parseInt(timeOnly, 10);
         if (num < 100) {
-          // Just hours
           hours = num;
           minutes = 0;
         } else {
-          // Hours and minutes combined
           hours = Math.floor(num / 100);
           minutes = num % 100;
         }
       }
       
-      // Validate
       if (isNaN(hours) || isNaN(minutes) || minutes >= 60 || minutes < 0) {
         return null;
       }
       
-      // Convert to 24-hour format
       if (isPM && hours !== 12) {
         hours += 12;
       } else if (isAM && hours === 12) {
         hours = 0;
       }
       
-      // Validate hours
       if (hours >= 24 || hours < 0) {
         return null;
       }
@@ -170,7 +210,6 @@ export default function WeeklyCalendarScreen() {
       const eventStart = timeToMinutes(event.startTime);
       const eventEnd = timeToMinutes(event.endTime);
 
-      // Check if times overlap
       if (
         (newStart >= eventStart && newStart < eventEnd) ||
         (newEnd > eventStart && newEnd <= eventEnd) ||
@@ -191,14 +230,13 @@ export default function WeeklyCalendarScreen() {
       const start = new Date();
       start.setHours(hours, minutes, 0, 0);
       const end = new Date(start);
-      end.setHours(hours + 1, minutes, 0, 0); // Default 1 hour duration
+      end.setHours(hours + 1, minutes, 0, 0);
       
       setStartTime(start);
       setEndTime(end);
       setManualStartTime(convertTo12Hour(timeSlot));
       setManualEndTime(convertTo12Hour(`${(hours + 1).toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`));
     } else {
-      // Default to 9 AM when using + button
       const start = new Date();
       start.setHours(9, 0, 0, 0);
       const end = new Date(start);
@@ -253,7 +291,6 @@ export default function WeeklyCalendarScreen() {
     let endTime24: string;
 
     if (useManualTimeInput) {
-      // Parse manual time input
       const parsedStart = parseManualTime(manualStartTime);
       const parsedEnd = parseManualTime(manualEndTime);
 
@@ -270,7 +307,6 @@ export default function WeeklyCalendarScreen() {
       startTime24 = `${parsedStart.hours.toString().padStart(2, '0')}:${parsedStart.minutes.toString().padStart(2, '0')}`;
       endTime24 = `${parsedEnd.hours.toString().padStart(2, '0')}:${parsedEnd.minutes.toString().padStart(2, '0')}`;
     } else {
-      // Use time picker values
       const startHours = startTime.getHours();
       const startMinutes = startTime.getMinutes();
       startTime24 = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')}`;
@@ -280,7 +316,6 @@ export default function WeeklyCalendarScreen() {
       endTime24 = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
     }
 
-    // Validate that end time is after start time
     if (timeToMinutes(endTime24) <= timeToMinutes(startTime24)) {
       Alert.alert('Error', 'End time must be after start time');
       return;
@@ -296,9 +331,10 @@ export default function WeeklyCalendarScreen() {
       type: eventType,
       context: context,
       status: eventStatus,
+      linkedTaskId: editingEvent?.linkedTaskId,
+      linkedTaskDate: editingEvent?.linkedTaskDate,
     };
 
-    // Check for overlaps
     const overlaps = checkOverlaps(newEvent, editingEvent?.id);
     
     if (overlaps.length > 0) {
@@ -360,7 +396,6 @@ export default function WeeklyCalendarScreen() {
 
   const handleTimeSlotPress = (day: number, timeSlot: string) => {
     if (draggedEvent) {
-      // Move the event to the new time and day
       const duration = timeToMinutes(draggedEvent.endTime) - timeToMinutes(draggedEvent.startTime);
       const newStartMinutes = timeToMinutes(timeSlot);
       const newEndMinutes = newStartMinutes + duration;
@@ -407,21 +442,18 @@ export default function WeeklyCalendarScreen() {
 
   const getEventHeight = (event: CalendarEvent): number => {
     const duration = timeToMinutes(event.endTime) - timeToMinutes(event.startTime);
-    const slots = duration / 15; // 15-minute slots
-    return slots * 60; // 60px per slot
+    const slots = duration / 15;
+    return slots * 60;
   };
 
   const linkTasksFromMeezes = async () => {
     try {
-      // Get current date for the week
       const today = new Date();
       const currentWeekStart = new Date(today);
-      currentWeekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+      currentWeekStart.setDate(today.getDate() - today.getDay());
       
-      // Load tasks from daily and weekly meezes
       const linkedEvents: CalendarEvent[] = [];
       
-      // Check each day of the week for daily meeze tasks
       for (let i = 0; i < 7; i++) {
         const checkDate = new Date(currentWeekStart);
         checkDate.setDate(currentWeekStart.getDate() + i);
@@ -434,12 +466,10 @@ export default function WeeklyCalendarScreen() {
           const tasks = dailyData.tasks || [];
           
           tasks.forEach((task: any) => {
-            // Use the task's startTime and endTime if available
             let startTime = '09:00';
             let endTime = '10:00';
             
             if (task.startTime && task.endTime) {
-              // Task has explicit start and end times
               const parsedStart = parseManualTime(task.startTime);
               const parsedEnd = parseManualTime(task.endTime);
               
@@ -448,19 +478,19 @@ export default function WeeklyCalendarScreen() {
                 endTime = `${parsedEnd.hours.toString().padStart(2, '0')}:${parsedEnd.minutes.toString().padStart(2, '0')}`;
               }
             } else if (task.scheduledTime) {
-              // Fallback to scheduledTime if available
               const parsed = parseManualTime(task.scheduledTime);
               if (parsed) {
                 startTime = `${parsed.hours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
-                // Default 1 hour duration
                 const endHours = parsed.hours + 1;
                 endTime = `${endHours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
               }
             }
             
+            const eventId = `linked-daily-${dateStr}-${task.id}`;
+            
             linkedEvents.push({
-              id: `linked-daily-${dateStr}-${task.id}`,
-              dayOfWeek: i, // Day of week (0 = Sunday, 1 = Monday, etc.)
+              id: eventId,
+              dayOfWeek: i,
               startTime: startTime,
               endTime: endTime,
               title: task.text,
@@ -468,13 +498,19 @@ export default function WeeklyCalendarScreen() {
               type: task.type,
               context: context,
               linkedTaskId: task.id,
+              linkedTaskDate: dateStr,
               status: task.status || 'not_started',
             });
+            
+            // Update the task with the linked event ID
+            task.linkedEventId = eventId;
           });
+          
+          // Save the updated daily meeze with linked event IDs
+          await AsyncStorage.setItem(`daily-meeze-${context}-${dateStr}`, JSON.stringify(dailyData));
         }
       }
       
-      // Load weekly meeze tasks
       const weekStartStr = currentWeekStart.toISOString().split('T')[0];
       const weeklyMeezeData = await AsyncStorage.getItem(`weekly-meeze-${context}-${weekStartStr}`);
       
@@ -483,13 +519,11 @@ export default function WeeklyCalendarScreen() {
         const tasks = weeklyData.tasks || [];
         
         tasks.forEach((task: any, index: number) => {
-          // Use the task's startTime and endTime if available
           let startTime = '09:00';
           let endTime = '10:00';
-          let dayOfWeek = 1; // Default to Monday
+          let dayOfWeek = 1;
           
           if (task.startTime && task.endTime) {
-            // Task has explicit start and end times
             const parsedStart = parseManualTime(task.startTime);
             const parsedEnd = parseManualTime(task.endTime);
             
@@ -498,19 +532,15 @@ export default function WeeklyCalendarScreen() {
               endTime = `${parsedEnd.hours.toString().padStart(2, '0')}:${parsedEnd.minutes.toString().padStart(2, '0')}`;
             }
           } else if (task.scheduledTime) {
-            // Fallback to scheduledTime if available
             const parsed = parseManualTime(task.scheduledTime);
             if (parsed) {
               startTime = `${parsed.hours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
-              // Default 1 hour duration
               const endHours = parsed.hours + 1;
               endTime = `${endHours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
             }
           }
           
-          // Distribute weekly tasks across the week (Monday through Friday)
-          // This spreads them out instead of putting them all on Monday
-          dayOfWeek = 1 + (index % 5); // 1-5 (Monday-Friday)
+          dayOfWeek = 1 + (index % 5);
           
           linkedEvents.push({
             id: `linked-weekly-${weekStartStr}-${task.id}`,
@@ -522,6 +552,7 @@ export default function WeeklyCalendarScreen() {
             type: task.type,
             context: context,
             linkedTaskId: task.id,
+            linkedTaskDate: weekStartStr,
             status: task.status || 'not_started',
           });
         });
@@ -599,7 +630,6 @@ export default function WeeklyCalendarScreen() {
           </Text>
         </View>
 
-        {/* Context Tabs */}
         <View style={styles.contextTabs}>
           <Pressable
             style={[
@@ -641,7 +671,6 @@ export default function WeeklyCalendarScreen() {
           </Pressable>
         </View>
 
-        {/* Action Buttons Row */}
         <View style={styles.actionButtonsRow}>
           <Pressable 
             style={[buttonStyles.primary, styles.actionButton]} 
@@ -679,7 +708,6 @@ export default function WeeklyCalendarScreen() {
             style={styles.verticalScroll}
           >
             <View style={styles.calendarGrid}>
-              {/* Header Row */}
               <View style={styles.headerRow}>
                 <View style={styles.timeColumn}>
                   <Text style={styles.headerText}>Time</Text>
@@ -691,7 +719,6 @@ export default function WeeklyCalendarScreen() {
                 ))}
               </View>
 
-              {/* Time Slots */}
               {timeSlots.map((timeSlot, timeIndex) => (
                 <View key={timeIndex} style={styles.timeRow}>
                   <View style={styles.timeColumn}>
@@ -722,7 +749,6 @@ export default function WeeklyCalendarScreen() {
                               {convertTo12Hour(event.startTime)} - {convertTo12Hour(event.endTime)}
                             </Text>
                             
-                            {/* Status Bar */}
                             <View style={[styles.statusBar, { backgroundColor: getStatusColor(event.status) }]}>
                               <Text style={styles.statusText}>{getStatusLabel(event.status)}</Text>
                             </View>
@@ -737,6 +763,12 @@ export default function WeeklyCalendarScreen() {
                                 </Text>
                               </View>
                             )}
+                            
+                            {event.linkedTaskId && (
+                              <View style={styles.linkedBadge}>
+                                <IconSymbol name="link" color="#ffffff" size={10} />
+                              </View>
+                            )}
                           </View>
                         ) : null}
                       </Pressable>
@@ -748,7 +780,6 @@ export default function WeeklyCalendarScreen() {
           </ScrollView>
         </ScrollView>
 
-        {/* Add/Edit Event Modal */}
         <Modal
           visible={modalVisible}
           animationType="slide"
@@ -792,7 +823,6 @@ export default function WeeklyCalendarScreen() {
                   ))}
                 </ScrollView>
 
-                {/* Time Input Mode Toggle */}
                 <View style={styles.timeInputModeToggle}>
                   <Pressable
                     style={[
@@ -836,7 +866,6 @@ export default function WeeklyCalendarScreen() {
 
                 {useManualTimeInput ? (
                   <>
-                    {/* Manual Time Input */}
                     <Text style={styles.modalLabel}>Time Range:</Text>
                     <Text style={styles.helpText}>
                       Enter times like: 7:15 AM, 9:30 PM, 1430, etc.
@@ -869,7 +898,6 @@ export default function WeeklyCalendarScreen() {
                   </>
                 ) : (
                   <>
-                    {/* Time Picker Mode */}
                     <Text style={styles.modalLabel}>Start Time:</Text>
                     <Pressable
                       style={styles.timePickerButton}
@@ -1236,6 +1264,17 @@ const styles = StyleSheet.create({
   },
   eventTypeText: {
     fontSize: 10,
+  },
+  linkedBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,

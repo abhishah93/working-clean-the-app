@@ -18,6 +18,7 @@ interface Task {
   completed: boolean;
   startTime?: string;
   endTime?: string;
+  linkedEventId?: string;
 }
 
 interface MiniTask {
@@ -63,6 +64,7 @@ export default function DailyMeezeScreen() {
   useEffect(() => {
     loadData();
     setQuote(getDailyQuote(date));
+    syncWithCalendar();
   }, [date, context]);
 
   const loadData = async () => {
@@ -85,13 +87,180 @@ export default function DailyMeezeScreen() {
     }
   };
 
-  const saveData = async () => {
+  const saveData = async (updatedData?: DailyMeezeData) => {
     try {
-      await AsyncStorage.setItem(`daily-meeze-${context}-${date}`, JSON.stringify(data));
+      const dataToSave = updatedData || data;
+      await AsyncStorage.setItem(`daily-meeze-${context}-${date}`, JSON.stringify(dataToSave));
       console.log('Saved daily meeze data for', context, date);
+      
+      // Sync changes to calendar
+      await syncTasksToCalendar(dataToSave.tasks);
+      
       router.back();
     } catch (error) {
       console.error('Error saving daily meeze:', error);
+    }
+  };
+
+  const syncWithCalendar = async () => {
+    try {
+      // Get the day of week for this date
+      const dateObj = new Date(date + 'T00:00:00');
+      const dayOfWeek = dateObj.getDay();
+      
+      // Calculate which week this date belongs to
+      const weekStart = new Date(dateObj);
+      weekStart.setDate(dateObj.getDate() - dayOfWeek);
+      const weekOffset = 0; // Current week
+      
+      // Load calendar events for this week
+      const calendarData = await AsyncStorage.getItem(`weekly-calendar-${context}-week${weekOffset}`);
+      if (!calendarData) return;
+      
+      const events = JSON.parse(calendarData);
+      
+      // Find events linked to tasks from this day
+      const linkedEvents = events.filter((event: any) => 
+        event.linkedTaskId && event.dayOfWeek === dayOfWeek
+      );
+      
+      if (linkedEvents.length === 0) return;
+      
+      // Update tasks with changes from calendar
+      const updatedTasks = data.tasks.map(task => {
+        const linkedEvent = linkedEvents.find((e: any) => e.linkedTaskId === task.id);
+        if (linkedEvent) {
+          return {
+            ...task,
+            text: linkedEvent.title,
+            status: linkedEvent.status,
+            type: linkedEvent.type || task.type,
+            linkedEventId: linkedEvent.id,
+          };
+        }
+        return task;
+      });
+      
+      setData({ ...data, tasks: updatedTasks });
+    } catch (error) {
+      console.error('Error syncing with calendar:', error);
+    }
+  };
+
+  const syncTasksToCalendar = async (tasks: Task[]) => {
+    try {
+      // Get the day of week for this date
+      const dateObj = new Date(date + 'T00:00:00');
+      const dayOfWeek = dateObj.getDay();
+      
+      // Calculate which week this date belongs to
+      const weekOffset = 0; // Current week
+      
+      // Load calendar events for this week
+      const calendarData = await AsyncStorage.getItem(`weekly-calendar-${context}-week${weekOffset}`);
+      if (!calendarData) return;
+      
+      const events = JSON.parse(calendarData);
+      
+      // Update linked events with task changes
+      const updatedEvents = events.map((event: any) => {
+        const linkedTask = tasks.find(t => t.id === event.linkedTaskId);
+        if (linkedTask && event.dayOfWeek === dayOfWeek) {
+          return {
+            ...event,
+            title: linkedTask.text,
+            status: linkedTask.status,
+            type: linkedTask.type,
+          };
+        }
+        return event;
+      });
+      
+      await AsyncStorage.setItem(`weekly-calendar-${context}-week${weekOffset}`, JSON.stringify(updatedEvents));
+      console.log('Synced tasks to calendar');
+    } catch (error) {
+      console.error('Error syncing tasks to calendar:', error);
+    }
+  };
+
+  const moveTaskToNextDay = async (taskId: string) => {
+    try {
+      const task = data.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      // Calculate next day
+      const currentDate = new Date(date + 'T00:00:00');
+      const nextDate = new Date(currentDate);
+      nextDate.setDate(currentDate.getDate() + 1);
+      const nextDateStr = nextDate.toISOString().split('T')[0];
+      
+      Alert.alert(
+        'Move Task to Next Day',
+        `Move "${task.text}" to ${formatDate(nextDateStr)}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Move',
+            onPress: async () => {
+              // Remove from current day
+              const updatedCurrentTasks = data.tasks.filter(t => t.id !== taskId);
+              const updatedCurrentData = { ...data, tasks: updatedCurrentTasks };
+              await AsyncStorage.setItem(`daily-meeze-${context}-${date}`, JSON.stringify(updatedCurrentData));
+              setData(updatedCurrentData);
+              
+              // Add to next day
+              const nextDayData = await AsyncStorage.getItem(`daily-meeze-${context}-${nextDateStr}`);
+              let nextDayMeeze: DailyMeezeData;
+              
+              if (nextDayData) {
+                nextDayMeeze = JSON.parse(nextDayData);
+              } else {
+                nextDayMeeze = {
+                  accomplishments: '',
+                  frontBurners: '',
+                  backBurners: '',
+                  wins: '',
+                  tasks: [],
+                };
+              }
+              
+              // Create a new task with a new ID for the next day
+              const movedTask = {
+                ...task,
+                id: Date.now().toString(),
+                linkedEventId: undefined, // Clear the linked event ID
+              };
+              
+              nextDayMeeze.tasks.push(movedTask);
+              await AsyncStorage.setItem(`daily-meeze-${context}-${nextDateStr}`, JSON.stringify(nextDayMeeze));
+              
+              // Remove linked calendar event if exists
+              if (task.linkedEventId) {
+                await removeLinkedCalendarEvent(task.linkedEventId);
+              }
+              
+              Alert.alert('Success', `Task moved to ${formatDate(nextDateStr)}`);
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error moving task to next day:', error);
+      Alert.alert('Error', 'Failed to move task to next day');
+    }
+  };
+
+  const removeLinkedCalendarEvent = async (eventId: string) => {
+    try {
+      const weekOffset = 0;
+      const calendarData = await AsyncStorage.getItem(`weekly-calendar-${context}-week${weekOffset}`);
+      if (!calendarData) return;
+      
+      const events = JSON.parse(calendarData);
+      const updatedEvents = events.filter((e: any) => e.id !== eventId);
+      await AsyncStorage.setItem(`weekly-calendar-${context}-week${weekOffset}`, JSON.stringify(updatedEvents));
+    } catch (error) {
+      console.error('Error removing linked calendar event:', error);
     }
   };
 
@@ -114,7 +283,8 @@ export default function DailyMeezeScreen() {
       endTime: taskEndTime || undefined,
     };
 
-    setData({ ...data, tasks: [...data.tasks, newTask] });
+    const updatedData = { ...data, tasks: [...data.tasks, newTask] };
+    setData(updatedData);
     setNewTaskText('');
     setScheduledTime('');
     setTaskStartTime('');
@@ -123,8 +293,29 @@ export default function DailyMeezeScreen() {
     setShowTaskModal(false);
   };
 
-  const deleteTask = (taskId: string) => {
-    setData({ ...data, tasks: data.tasks.filter(t => t.id !== taskId) });
+  const deleteTask = async (taskId: string) => {
+    const task = data.tasks.find(t => t.id === taskId);
+    
+    Alert.alert(
+      'Delete Task',
+      'Are you sure you want to delete this task?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            // Remove linked calendar event if exists
+            if (task?.linkedEventId) {
+              await removeLinkedCalendarEvent(task.linkedEventId);
+            }
+            
+            const updatedData = { ...data, tasks: data.tasks.filter(t => t.id !== taskId) };
+            setData(updatedData);
+          },
+        },
+      ]
+    );
   };
 
   const toggleTaskCompletion = (taskId: string) => {
@@ -446,6 +637,13 @@ export default function DailyMeezeScreen() {
                           </Text>
                         </View>
                       )}
+                      {task.linkedEventId && (
+                        <View style={[styles.taskTypeBadge, { backgroundColor: colors.primary }]}>
+                          <Text style={styles.taskTypeText}>
+                            🔗 Linked
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
                     {/* Status Selector */}
@@ -480,6 +678,12 @@ export default function DailyMeezeScreen() {
                     </View>
                   </View>
                   <View style={styles.taskActions}>
+                    <Pressable
+                      style={styles.taskActionButton}
+                      onPress={() => moveTaskToNextDay(task.id)}
+                    >
+                      <IconSymbol name="arrow.right.circle" color={colors.accent} size={20} />
+                    </Pressable>
                     <Pressable
                       style={styles.taskActionButton}
                       onPress={() => openScheduleModal(task)}
@@ -549,7 +753,7 @@ export default function DailyMeezeScreen() {
             />
           </View>
 
-          <Pressable style={buttonStyles.primary} onPress={saveData}>
+          <Pressable style={buttonStyles.primary} onPress={() => saveData()}>
             <Text style={buttonStyles.text}>Save Daily Meeze</Text>
           </Pressable>
         </ScrollView>
