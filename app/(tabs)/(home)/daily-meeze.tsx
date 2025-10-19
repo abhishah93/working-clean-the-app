@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect } from "react";
 import { Stack, useLocalSearchParams, router } from "expo-router";
-import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Platform, Modal, Alert } from "react-native";
+import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Platform, Modal, Alert, KeyboardAvoidingView } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDailyQuote } from "@/utils/quotes";
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface Task {
   id: string;
@@ -51,6 +52,7 @@ export default function DailyMeezeScreen() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showMiniTaskModal, setShowMiniTaskModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showMoveTaskModal, setShowMoveTaskModal] = useState(false);
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskType, setNewTaskType] = useState<'process' | 'immersive'>('process');
   const [newTaskStatus, setNewTaskStatus] = useState<'not_started' | 'in_progress' | 'completed'>('not_started');
@@ -60,6 +62,14 @@ export default function DailyMeezeScreen() {
   const [taskStartTime, setTaskStartTime] = useState('');
   const [taskEndTime, setTaskEndTime] = useState('');
   const [quote, setQuote] = useState('');
+  
+  // Move task modal states
+  const [moveTaskDate, setMoveTaskDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [moveTaskStartTime, setMoveTaskStartTime] = useState(new Date());
+  const [moveTaskEndTime, setMoveTaskEndTime] = useState(new Date());
+  const [showMoveStartTimePicker, setShowMoveStartTimePicker] = useState(false);
+  const [showMoveEndTimePicker, setShowMoveEndTimePicker] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -121,7 +131,7 @@ export default function DailyMeezeScreen() {
       
       // Find events linked to tasks from this day
       const linkedEvents = events.filter((event: any) => 
-        event.linkedTaskId && event.dayOfWeek === dayOfWeek
+        event.linkedTaskId && event.linkedTaskDate === date
       );
       
       if (linkedEvents.length === 0) return;
@@ -135,6 +145,8 @@ export default function DailyMeezeScreen() {
             text: linkedEvent.title,
             status: linkedEvent.status,
             type: linkedEvent.type || task.type,
+            startTime: convertTo12Hour(linkedEvent.startTime),
+            endTime: convertTo12Hour(linkedEvent.endTime),
             linkedEventId: linkedEvent.id,
           };
         }
@@ -164,8 +176,8 @@ export default function DailyMeezeScreen() {
       
       // Update linked events with task changes
       const updatedEvents = events.map((event: any) => {
-        const linkedTask = tasks.find(t => t.id === event.linkedTaskId);
-        if (linkedTask && event.dayOfWeek === dayOfWeek) {
+        const linkedTask = tasks.find(t => t.id === event.linkedTaskId && event.linkedTaskDate === date);
+        if (linkedTask) {
           return {
             ...event,
             title: linkedTask.text,
@@ -180,6 +192,219 @@ export default function DailyMeezeScreen() {
       console.log('Synced tasks to calendar');
     } catch (error) {
       console.error('Error syncing tasks to calendar:', error);
+    }
+  };
+
+  const convertTo12Hour = (time24h: string): string => {
+    const [hours, minutes] = time24h.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+    return `${displayHour}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
+  const parseManualTime = (timeStr: string): { hours: number; minutes: number } | null => {
+    try {
+      const cleaned = timeStr.trim().toLowerCase().replace(/\s+/g, ' ');
+      
+      const isPM = cleaned.includes('pm');
+      const isAM = cleaned.includes('am');
+      
+      const timeOnly = cleaned.replace(/am|pm/g, '').trim();
+      
+      let hours = 0;
+      let minutes = 0;
+      
+      if (timeOnly.includes(':')) {
+        const parts = timeOnly.split(':');
+        hours = parseInt(parts[0], 10);
+        minutes = parseInt(parts[1], 10);
+      } else {
+        const num = parseInt(timeOnly, 10);
+        if (num < 100) {
+          hours = num;
+          minutes = 0;
+        } else {
+          hours = Math.floor(num / 100);
+          minutes = num % 100;
+        }
+      }
+      
+      if (isNaN(hours) || isNaN(minutes) || minutes >= 60 || minutes < 0) {
+        return null;
+      }
+      
+      if (isPM && hours !== 12) {
+        hours += 12;
+      } else if (isAM && hours === 12) {
+        hours = 0;
+      }
+      
+      if (hours >= 24 || hours < 0) {
+        return null;
+      }
+      
+      return { hours, minutes };
+    } catch (error) {
+      console.error('Error parsing time:', error);
+      return null;
+    }
+  };
+
+  const openMoveTaskModal = (task: Task) => {
+    setSelectedTask(task);
+    
+    // Set default date to current date
+    const currentDate = new Date(date + 'T00:00:00');
+    setMoveTaskDate(currentDate);
+    
+    // Set default times based on task's current times or defaults
+    if (task.startTime && task.endTime) {
+      const parsedStart = parseManualTime(task.startTime);
+      const parsedEnd = parseManualTime(task.endTime);
+      
+      if (parsedStart) {
+        const startDate = new Date();
+        startDate.setHours(parsedStart.hours, parsedStart.minutes, 0, 0);
+        setMoveTaskStartTime(startDate);
+      }
+      
+      if (parsedEnd) {
+        const endDate = new Date();
+        endDate.setHours(parsedEnd.hours, parsedEnd.minutes, 0, 0);
+        setMoveTaskEndTime(endDate);
+      }
+    } else {
+      const start = new Date();
+      start.setHours(9, 0, 0, 0);
+      const end = new Date();
+      end.setHours(10, 0, 0, 0);
+      setMoveTaskStartTime(start);
+      setMoveTaskEndTime(end);
+    }
+    
+    setShowMoveTaskModal(true);
+  };
+
+  const moveTaskToSelectedDate = async () => {
+    if (!selectedTask) return;
+    
+    const targetDateStr = moveTaskDate.toISOString().split('T')[0];
+    
+    // Convert times to 24-hour format
+    const startHours = moveTaskStartTime.getHours();
+    const startMinutes = moveTaskStartTime.getMinutes();
+    const startTime24 = `${startHours.toString().padStart(2, '0')}:${startMinutes.toString().padStart(2, '0')}`;
+    
+    const endHours = moveTaskEndTime.getHours();
+    const endMinutes = moveTaskEndTime.getMinutes();
+    const endTime24 = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+    
+    Alert.alert(
+      'Move Task',
+      `Move "${selectedTask.text}" to ${formatDate(targetDateStr)} at ${convertTo12Hour(startTime24)} - ${convertTo12Hour(endTime24)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Move',
+          onPress: async () => {
+            try {
+              // Remove from current day
+              const updatedCurrentTasks = data.tasks.filter(t => t.id !== selectedTask.id);
+              const updatedCurrentData = { ...data, tasks: updatedCurrentTasks };
+              await AsyncStorage.setItem(`daily-meeze-${context}-${date}`, JSON.stringify(updatedCurrentData));
+              setData(updatedCurrentData);
+              
+              // Add to target day
+              const targetDayData = await AsyncStorage.getItem(`daily-meeze-${context}-${targetDateStr}`);
+              let targetDayMeeze: DailyMeezeData;
+              
+              if (targetDayData) {
+                targetDayMeeze = JSON.parse(targetDayData);
+              } else {
+                targetDayMeeze = {
+                  accomplishments: '',
+                  frontBurners: '',
+                  backBurners: '',
+                  wins: '',
+                  tasks: [],
+                };
+              }
+              
+              // Create a new task with updated times
+              const movedTask = {
+                ...selectedTask,
+                id: Date.now().toString(),
+                startTime: convertTo12Hour(startTime24),
+                endTime: convertTo12Hour(endTime24),
+                linkedEventId: undefined, // Clear the linked event ID
+              };
+              
+              targetDayMeeze.tasks.push(movedTask);
+              await AsyncStorage.setItem(`daily-meeze-${context}-${targetDateStr}`, JSON.stringify(targetDayMeeze));
+              
+              // Remove old linked calendar event if exists
+              if (selectedTask.linkedEventId) {
+                await removeLinkedCalendarEvent(selectedTask.linkedEventId);
+              }
+              
+              // Create new calendar event for the moved task
+              await createCalendarEventForMovedTask(movedTask, targetDateStr, startTime24, endTime24);
+              
+              setShowMoveTaskModal(false);
+              Alert.alert('Success', `Task moved to ${formatDate(targetDateStr)}`);
+            } catch (error) {
+              console.error('Error moving task:', error);
+              Alert.alert('Error', 'Failed to move task');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const createCalendarEventForMovedTask = async (task: Task, targetDate: string, startTime24: string, endTime24: string) => {
+    try {
+      const dateObj = new Date(targetDate + 'T00:00:00');
+      const dayOfWeek = dateObj.getDay();
+      
+      const weekOffset = 0;
+      const calendarData = await AsyncStorage.getItem(`weekly-calendar-${context}-week${weekOffset}`);
+      
+      let events = [];
+      if (calendarData) {
+        events = JSON.parse(calendarData);
+      }
+      
+      const newEvent = {
+        id: `linked-daily-${targetDate}-${task.id}`,
+        dayOfWeek: dayOfWeek,
+        startTime: startTime24,
+        endTime: endTime24,
+        title: task.text,
+        description: `Moved from ${date}`,
+        type: task.type,
+        context: context,
+        linkedTaskId: task.id,
+        linkedTaskDate: targetDate,
+        status: task.status,
+      };
+      
+      events.push(newEvent);
+      await AsyncStorage.setItem(`weekly-calendar-${context}-week${weekOffset}`, JSON.stringify(events));
+      
+      // Update task with new linked event ID
+      const targetDayData = await AsyncStorage.getItem(`daily-meeze-${context}-${targetDate}`);
+      if (targetDayData) {
+        const targetDayMeeze = JSON.parse(targetDayData);
+        targetDayMeeze.tasks = targetDayMeeze.tasks.map((t: Task) => 
+          t.id === task.id ? { ...t, linkedEventId: newEvent.id } : t
+        );
+        await AsyncStorage.setItem(`daily-meeze-${context}-${targetDate}`, JSON.stringify(targetDayMeeze));
+      }
+      
+      console.log('Created calendar event for moved task');
+    } catch (error) {
+      console.error('Error creating calendar event for moved task:', error);
     }
   };
 
@@ -247,6 +472,73 @@ export default function DailyMeezeScreen() {
     } catch (error) {
       console.error('Error moving task to next day:', error);
       Alert.alert('Error', 'Failed to move task to next day');
+    }
+  };
+
+  const moveTaskToPreviousDay = async (taskId: string) => {
+    try {
+      const task = data.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      // Calculate previous day
+      const currentDate = new Date(date + 'T00:00:00');
+      const prevDate = new Date(currentDate);
+      prevDate.setDate(currentDate.getDate() - 1);
+      const prevDateStr = prevDate.toISOString().split('T')[0];
+      
+      Alert.alert(
+        'Move Task to Previous Day',
+        `Move "${task.text}" to ${formatDate(prevDateStr)}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Move',
+            onPress: async () => {
+              // Remove from current day
+              const updatedCurrentTasks = data.tasks.filter(t => t.id !== taskId);
+              const updatedCurrentData = { ...data, tasks: updatedCurrentTasks };
+              await AsyncStorage.setItem(`daily-meeze-${context}-${date}`, JSON.stringify(updatedCurrentData));
+              setData(updatedCurrentData);
+              
+              // Add to previous day
+              const prevDayData = await AsyncStorage.getItem(`daily-meeze-${context}-${prevDateStr}`);
+              let prevDayMeeze: DailyMeezeData;
+              
+              if (prevDayData) {
+                prevDayMeeze = JSON.parse(prevDayData);
+              } else {
+                prevDayMeeze = {
+                  accomplishments: '',
+                  frontBurners: '',
+                  backBurners: '',
+                  wins: '',
+                  tasks: [],
+                };
+              }
+              
+              // Create a new task with a new ID for the previous day
+              const movedTask = {
+                ...task,
+                id: Date.now().toString(),
+                linkedEventId: undefined, // Clear the linked event ID
+              };
+              
+              prevDayMeeze.tasks.push(movedTask);
+              await AsyncStorage.setItem(`daily-meeze-${context}-${prevDateStr}`, JSON.stringify(prevDayMeeze));
+              
+              // Remove linked calendar event if exists
+              if (task.linkedEventId) {
+                await removeLinkedCalendarEvent(task.linkedEventId);
+              }
+              
+              Alert.alert('Success', `Task moved to ${formatDate(prevDateStr)}`);
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error moving task to previous day:', error);
+      Alert.alert('Error', 'Failed to move task to previous day');
     }
   };
 
@@ -470,10 +762,15 @@ export default function DailyMeezeScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <View style={commonStyles.container}>
+      <KeyboardAvoidingView 
+        style={commonStyles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
         <ScrollView 
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           <View style={styles.dateHeader}>
             <IconSymbol name="calendar" color={colors.primary} size={24} />
@@ -680,9 +977,21 @@ export default function DailyMeezeScreen() {
                   <View style={styles.taskActions}>
                     <Pressable
                       style={styles.taskActionButton}
+                      onPress={() => moveTaskToPreviousDay(task.id)}
+                    >
+                      <IconSymbol name="arrow.left.circle" color={colors.accent} size={20} />
+                    </Pressable>
+                    <Pressable
+                      style={styles.taskActionButton}
                       onPress={() => moveTaskToNextDay(task.id)}
                     >
                       <IconSymbol name="arrow.right.circle" color={colors.accent} size={20} />
+                    </Pressable>
+                    <Pressable
+                      style={styles.taskActionButton}
+                      onPress={() => openMoveTaskModal(task)}
+                    >
+                      <IconSymbol name="calendar.badge.clock" color={colors.primary} size={20} />
                     </Pressable>
                     <Pressable
                       style={styles.taskActionButton}
@@ -765,9 +1074,12 @@ export default function DailyMeezeScreen() {
           transparent={true}
           onRequestClose={() => setShowTaskModal(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView 
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View style={styles.modalContent}>
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <View style={styles.modalHeader}>
                   <Text style={commonStyles.title}>Add Task</Text>
                   <Pressable onPress={() => setShowTaskModal(false)}>
@@ -894,7 +1206,116 @@ export default function DailyMeezeScreen() {
                 </Pressable>
               </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* Move Task Modal */}
+        <Modal
+          visible={showMoveTaskModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowMoveTaskModal(false)}
+        >
+          <KeyboardAvoidingView 
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.modalContent}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.modalHeader}>
+                  <Text style={commonStyles.title}>Move Task</Text>
+                  <Pressable onPress={() => setShowMoveTaskModal(false)}>
+                    <IconSymbol name="xmark" color={colors.text} size={24} />
+                  </Pressable>
+                </View>
+
+                {selectedTask && (
+                  <Text style={styles.selectedTaskText}>{selectedTask.text}</Text>
+                )}
+
+                <Text style={styles.modalLabel}>Select Date:</Text>
+                <Pressable
+                  style={styles.datePickerButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <IconSymbol name="calendar" color={colors.primary} size={20} />
+                  <Text style={styles.datePickerText}>
+                    {formatDate(moveTaskDate.toISOString().split('T')[0])}
+                  </Text>
+                </Pressable>
+
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={moveTaskDate}
+                    mode="date"
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowDatePicker(Platform.OS === 'ios');
+                      if (date) {
+                        setMoveTaskDate(date);
+                      }
+                    }}
+                  />
+                )}
+
+                <Text style={styles.modalLabel}>Start Time:</Text>
+                <Pressable
+                  style={styles.timePickerButton}
+                  onPress={() => setShowMoveStartTimePicker(true)}
+                >
+                  <IconSymbol name="clock" color={colors.primary} size={20} />
+                  <Text style={styles.timePickerText}>
+                    {convertTo12Hour(`${moveTaskStartTime.getHours().toString().padStart(2, '0')}:${moveTaskStartTime.getMinutes().toString().padStart(2, '0')}`)}
+                  </Text>
+                </Pressable>
+
+                {showMoveStartTimePicker && (
+                  <DateTimePicker
+                    value={moveTaskStartTime}
+                    mode="time"
+                    is24Hour={false}
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowMoveStartTimePicker(Platform.OS === 'ios');
+                      if (date) {
+                        setMoveTaskStartTime(date);
+                      }
+                    }}
+                  />
+                )}
+
+                <Text style={styles.modalLabel}>End Time:</Text>
+                <Pressable
+                  style={styles.timePickerButton}
+                  onPress={() => setShowMoveEndTimePicker(true)}
+                >
+                  <IconSymbol name="clock" color={colors.primary} size={20} />
+                  <Text style={styles.timePickerText}>
+                    {convertTo12Hour(`${moveTaskEndTime.getHours().toString().padStart(2, '0')}:${moveTaskEndTime.getMinutes().toString().padStart(2, '0')}`)}
+                  </Text>
+                </Pressable>
+
+                {showMoveEndTimePicker && (
+                  <DateTimePicker
+                    value={moveTaskEndTime}
+                    mode="time"
+                    is24Hour={false}
+                    display="default"
+                    onChange={(event, date) => {
+                      setShowMoveEndTimePicker(Platform.OS === 'ios');
+                      if (date) {
+                        setMoveTaskEndTime(date);
+                      }
+                    }}
+                  />
+                )}
+
+                <Pressable style={buttonStyles.primary} onPress={moveTaskToSelectedDate}>
+                  <Text style={buttonStyles.text}>Move Task</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Schedule Time Modal */}
@@ -904,52 +1325,57 @@ export default function DailyMeezeScreen() {
           transparent={true}
           onRequestClose={() => setShowScheduleModal(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView 
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={commonStyles.title}>Schedule Task</Text>
-                <Pressable onPress={() => setShowScheduleModal(false)}>
-                  <IconSymbol name="xmark" color={colors.text} size={24} />
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.modalHeader}>
+                  <Text style={commonStyles.title}>Schedule Task</Text>
+                  <Pressable onPress={() => setShowScheduleModal(false)}>
+                    <IconSymbol name="xmark" color={colors.text} size={24} />
+                  </Pressable>
+                </View>
+
+                {selectedTask && (
+                  <Text style={styles.selectedTaskText}>{selectedTask.text}</Text>
+                )}
+
+                <Text style={styles.modalLabel}>Time Range:</Text>
+                <Text style={styles.helpText}>
+                  Enter times like: 1 PM, 3:30 PM, 9 AM, etc.
+                </Text>
+                <View style={styles.timeInputRow}>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeInputLabel}>Start</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      placeholder="1 PM"
+                      placeholderTextColor={colors.textSecondary}
+                      value={taskStartTime}
+                      onChangeText={setTaskStartTime}
+                    />
+                  </View>
+                  <Text style={styles.timeSeparator}>-</Text>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeInputLabel}>End</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      placeholder="3 PM"
+                      placeholderTextColor={colors.textSecondary}
+                      value={taskEndTime}
+                      onChangeText={setTaskEndTime}
+                    />
+                  </View>
+                </View>
+
+                <Pressable style={buttonStyles.primary} onPress={saveScheduledTime}>
+                  <Text style={buttonStyles.text}>Save Time</Text>
                 </Pressable>
-              </View>
-
-              {selectedTask && (
-                <Text style={styles.selectedTaskText}>{selectedTask.text}</Text>
-              )}
-
-              <Text style={styles.modalLabel}>Time Range:</Text>
-              <Text style={styles.helpText}>
-                Enter times like: 1 PM, 3:30 PM, 9 AM, etc.
-              </Text>
-              <View style={styles.timeInputRow}>
-                <View style={styles.timeInputContainer}>
-                  <Text style={styles.timeInputLabel}>Start</Text>
-                  <TextInput
-                    style={styles.timeInput}
-                    placeholder="1 PM"
-                    placeholderTextColor={colors.textSecondary}
-                    value={taskStartTime}
-                    onChangeText={setTaskStartTime}
-                  />
-                </View>
-                <Text style={styles.timeSeparator}>-</Text>
-                <View style={styles.timeInputContainer}>
-                  <Text style={styles.timeInputLabel}>End</Text>
-                  <TextInput
-                    style={styles.timeInput}
-                    placeholder="3 PM"
-                    placeholderTextColor={colors.textSecondary}
-                    value={taskEndTime}
-                    onChangeText={setTaskEndTime}
-                  />
-                </View>
-              </View>
-
-              <Pressable style={buttonStyles.primary} onPress={saveScheduledTime}>
-                <Text style={buttonStyles.text}>Save Time</Text>
-              </Pressable>
+              </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Mini Tasks Modal */}
@@ -959,7 +1385,10 @@ export default function DailyMeezeScreen() {
           transparent={true}
           onRequestClose={() => setShowMiniTaskModal(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView 
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={commonStyles.title}>Break Down Task</Text>
@@ -999,9 +1428,9 @@ export default function DailyMeezeScreen() {
                 </>
               )}
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
-      </View>
+      </KeyboardAvoidingView>
     </>
   );
 }
@@ -1168,7 +1597,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   taskActions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 8,
   },
   taskActionButton: {
@@ -1312,6 +1741,40 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: colors.highlight,
     borderRadius: 8,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.highlight,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  datePickerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+  },
+  timePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.highlight,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  timePickerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
   },
   miniTaskInputRow: {
     flexDirection: 'row',

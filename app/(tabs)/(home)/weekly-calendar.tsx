@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Stack, router } from "expo-router";
-import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Modal, Platform, Alert } from "react-native";
+import { ScrollView, Pressable, StyleSheet, View, Text, TextInput, Modal, Platform, Alert, KeyboardAvoidingView } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -97,7 +97,7 @@ export default function WeeklyCalendarScreen() {
       
       // Group events by day
       for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
-        const dayEvents = events.filter(e => e.dayOfWeek === dayOfWeek && e.linkedTaskId);
+        const dayEvents = events.filter(e => e.dayOfWeek === dayOfWeek && e.linkedTaskId && e.linkedTaskDate);
         
         if (dayEvents.length === 0) continue;
         
@@ -106,33 +106,83 @@ export default function WeeklyCalendarScreen() {
         dayDate.setDate(currentWeekStart.getDate() + dayOfWeek);
         const dateStr = dayDate.toISOString().split('T')[0];
         
-        // Load daily meeze for this day
-        const dailyMeezeData = await AsyncStorage.getItem(`daily-meeze-${context}-${dateStr}`);
-        if (!dailyMeezeData) continue;
-        
-        const dailyMeeze = JSON.parse(dailyMeezeData);
-        
-        // Update tasks with changes from calendar
-        const updatedTasks = dailyMeeze.tasks.map((task: any) => {
-          const linkedEvent = dayEvents.find(e => e.linkedTaskId === task.id);
-          if (linkedEvent) {
-            return {
-              ...task,
-              text: linkedEvent.title,
-              status: linkedEvent.status,
-              type: linkedEvent.type || task.type,
-              startTime: convertTo12Hour(linkedEvent.startTime),
-              endTime: convertTo12Hour(linkedEvent.endTime),
-              linkedEventId: linkedEvent.id,
+        // Process each event
+        for (const event of dayEvents) {
+          // If the event's linkedTaskDate doesn't match the current day, it was moved
+          if (event.linkedTaskDate !== dateStr) {
+            // Remove task from old date
+            const oldDateData = await AsyncStorage.getItem(`daily-meeze-${context}-${event.linkedTaskDate}`);
+            if (oldDateData) {
+              const oldMeeze = JSON.parse(oldDateData);
+              oldMeeze.tasks = oldMeeze.tasks.filter((task: any) => task.id !== event.linkedTaskId);
+              await AsyncStorage.setItem(`daily-meeze-${context}-${event.linkedTaskDate}`, JSON.stringify(oldMeeze));
+            }
+            
+            // Add task to new date
+            const newDateData = await AsyncStorage.getItem(`daily-meeze-${context}-${dateStr}`);
+            let newMeeze;
+            if (newDateData) {
+              newMeeze = JSON.parse(newDateData);
+            } else {
+              newMeeze = {
+                accomplishments: '',
+                frontBurners: '',
+                backBurners: '',
+                wins: '',
+                tasks: [],
+              };
+            }
+            
+            // Create new task with updated info
+            const newTask = {
+              id: event.linkedTaskId,
+              text: event.title,
+              type: event.type || 'process',
+              miniTasks: [],
+              context: context,
+              status: event.status,
+              completed: event.status === 'completed',
+              startTime: convertTo12Hour(event.startTime),
+              endTime: convertTo12Hour(event.endTime),
+              linkedEventId: event.id,
             };
+            
+            newMeeze.tasks.push(newTask);
+            await AsyncStorage.setItem(`daily-meeze-${context}-${dateStr}`, JSON.stringify(newMeeze));
+            
+            // Update event's linkedTaskDate
+            event.linkedTaskDate = dateStr;
+          } else {
+            // Update existing task in the same date
+            const dailyMeezeData = await AsyncStorage.getItem(`daily-meeze-${context}-${dateStr}`);
+            if (!dailyMeezeData) continue;
+            
+            const dailyMeeze = JSON.parse(dailyMeezeData);
+            
+            // Update task with changes from calendar
+            dailyMeeze.tasks = dailyMeeze.tasks.map((task: any) => {
+              if (task.id === event.linkedTaskId) {
+                return {
+                  ...task,
+                  text: event.title,
+                  status: event.status,
+                  type: event.type || task.type,
+                  startTime: convertTo12Hour(event.startTime),
+                  endTime: convertTo12Hour(event.endTime),
+                  linkedEventId: event.id,
+                };
+              }
+              return task;
+            });
+            
+            await AsyncStorage.setItem(`daily-meeze-${context}-${dateStr}`, JSON.stringify(dailyMeeze));
           }
-          return task;
-        });
-        
-        dailyMeeze.tasks = updatedTasks;
-        await AsyncStorage.setItem(`daily-meeze-${context}-${dateStr}`, JSON.stringify(dailyMeeze));
-        console.log('Synced calendar changes to daily meeze for', dateStr);
+        }
       }
+      
+      // Save updated events with corrected linkedTaskDate
+      await AsyncStorage.setItem(`weekly-calendar-${context}-week${selectedWeek}`, JSON.stringify(events));
+      console.log('Synced calendar changes to daily meezes');
     } catch (error) {
       console.error('Error syncing events to meezes:', error);
     }
@@ -786,9 +836,12 @@ export default function WeeklyCalendarScreen() {
           transparent={true}
           onRequestClose={() => setModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView 
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View style={styles.modalContent}>
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <View style={styles.modalHeader}>
                   <Text style={commonStyles.title}>
                     {editingEvent ? 'Edit Event' : 'Add Event'}
@@ -1070,7 +1123,7 @@ export default function WeeklyCalendarScreen() {
                 )}
               </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </>
