@@ -434,11 +434,21 @@ export default function WeeklyCalendarScreen() {
           const tasks = dailyData.tasks || [];
           
           tasks.forEach((task: any) => {
-            // Parse scheduled time if available
+            // Use the task's startTime and endTime if available
             let startTime = '09:00';
             let endTime = '10:00';
             
-            if (task.scheduledTime) {
+            if (task.startTime && task.endTime) {
+              // Task has explicit start and end times
+              const parsedStart = parseManualTime(task.startTime);
+              const parsedEnd = parseManualTime(task.endTime);
+              
+              if (parsedStart && parsedEnd) {
+                startTime = `${parsedStart.hours.toString().padStart(2, '0')}:${parsedStart.minutes.toString().padStart(2, '0')}`;
+                endTime = `${parsedEnd.hours.toString().padStart(2, '0')}:${parsedEnd.minutes.toString().padStart(2, '0')}`;
+              }
+            } else if (task.scheduledTime) {
+              // Fallback to scheduledTime if available
               const parsed = parseManualTime(task.scheduledTime);
               if (parsed) {
                 startTime = `${parsed.hours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
@@ -450,11 +460,11 @@ export default function WeeklyCalendarScreen() {
             
             linkedEvents.push({
               id: `linked-daily-${dateStr}-${task.id}`,
-              dayOfWeek: i, // Day of week (0 = Sunday)
+              dayOfWeek: i, // Day of week (0 = Sunday, 1 = Monday, etc.)
               startTime: startTime,
               endTime: endTime,
               title: task.text,
-              description: `From Daily Meeze - ${task.type === 'process' ? 'Process Task' : 'Immersive Task'}`,
+              description: `From Daily Meeze (${dateStr}) - ${task.type === 'process' ? 'Process Task' : 'Immersive Task'}`,
               type: task.type,
               context: context,
               linkedTaskId: task.id,
@@ -473,11 +483,22 @@ export default function WeeklyCalendarScreen() {
         const tasks = weeklyData.tasks || [];
         
         tasks.forEach((task: any, index: number) => {
-          // Parse scheduled time if available
+          // Use the task's startTime and endTime if available
           let startTime = '09:00';
           let endTime = '10:00';
+          let dayOfWeek = 1; // Default to Monday
           
-          if (task.scheduledTime) {
+          if (task.startTime && task.endTime) {
+            // Task has explicit start and end times
+            const parsedStart = parseManualTime(task.startTime);
+            const parsedEnd = parseManualTime(task.endTime);
+            
+            if (parsedStart && parsedEnd) {
+              startTime = `${parsedStart.hours.toString().padStart(2, '0')}:${parsedStart.minutes.toString().padStart(2, '0')}`;
+              endTime = `${parsedEnd.hours.toString().padStart(2, '0')}:${parsedEnd.minutes.toString().padStart(2, '0')}`;
+            }
+          } else if (task.scheduledTime) {
+            // Fallback to scheduledTime if available
             const parsed = parseManualTime(task.scheduledTime);
             if (parsed) {
               startTime = `${parsed.hours.toString().padStart(2, '0')}:${parsed.minutes.toString().padStart(2, '0')}`;
@@ -487,9 +508,13 @@ export default function WeeklyCalendarScreen() {
             }
           }
           
+          // Distribute weekly tasks across the week (Monday through Friday)
+          // This spreads them out instead of putting them all on Monday
+          dayOfWeek = 1 + (index % 5); // 1-5 (Monday-Friday)
+          
           linkedEvents.push({
             id: `linked-weekly-${weekStartStr}-${task.id}`,
-            dayOfWeek: 1, // Default to Monday for weekly tasks
+            dayOfWeek: dayOfWeek,
             startTime: startTime,
             endTime: endTime,
             title: task.text,
@@ -509,7 +534,7 @@ export default function WeeklyCalendarScreen() {
       
       Alert.alert(
         'Link Tasks',
-        `Found ${linkedEvents.length} task(s). These will be added to your calendar on the correct days. You can then drag them to reschedule.`,
+        `Found ${linkedEvents.length} task(s). These will be added to your calendar on the correct days and times. You can then drag them to reschedule.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -521,7 +546,7 @@ export default function WeeklyCalendarScreen() {
               });
               
               saveEvents(updatedEvents);
-              Alert.alert('Success', 'Tasks linked to calendar on the correct days. Drag them to reschedule!');
+              Alert.alert('Success', 'Tasks linked to calendar with correct days and times!');
             },
           },
         ]

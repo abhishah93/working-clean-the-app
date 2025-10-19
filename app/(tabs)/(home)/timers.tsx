@@ -7,7 +7,6 @@ import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import { notificationService } from "@/utils/notificationService";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
-import TimerPicker from "@/components/TimerPicker";
 
 interface Timer {
   id: string;
@@ -23,9 +22,9 @@ export default function TimersScreen() {
   const [timers, setTimers] = useState<Timer[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [timerName, setTimerName] = useState('');
-  const [selectedHours, setSelectedHours] = useState(0);
-  const [selectedMinutes, setSelectedMinutes] = useState(25);
-  const [selectedSeconds, setSelectedSeconds] = useState(0);
+  const [hours, setHours] = useState('0');
+  const [minutes, setMinutes] = useState('25');
+  const [seconds, setSeconds] = useState('0');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const appState = useRef(AppState.currentState);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -182,19 +181,17 @@ export default function TimersScreen() {
     }
   };
 
-  const handleTimeChange = (hours: number, minutes: number, seconds: number) => {
-    setSelectedHours(hours);
-    setSelectedMinutes(minutes);
-    setSelectedSeconds(seconds);
-  };
-
   const addTimer = () => {
     if (!timerName.trim()) {
       Alert.alert('Error', 'Please enter a timer name');
       return;
     }
 
-    const duration = (selectedHours * 3600) + (selectedMinutes * 60) + selectedSeconds;
+    const hoursNum = parseInt(hours) || 0;
+    const minutesNum = parseInt(minutes) || 0;
+    const secondsNum = parseInt(seconds) || 0;
+
+    const duration = (hoursNum * 3600) + (minutesNum * 60) + secondsNum;
     
     if (duration <= 0) {
       Alert.alert('Error', 'Please set a duration greater than 0');
@@ -211,9 +208,9 @@ export default function TimersScreen() {
 
     setTimers([...timers, newTimer]);
     setTimerName('');
-    setSelectedHours(0);
-    setSelectedMinutes(25);
-    setSelectedSeconds(0);
+    setHours('0');
+    setMinutes('25');
+    setSeconds('0');
     setShowAddModal(false);
   };
 
@@ -293,10 +290,10 @@ export default function TimersScreen() {
     return ((timer.duration - timer.remaining) / timer.duration) * 100;
   };
 
-  const setPresetTime = (hours: number, minutes: number, seconds: number) => {
-    setSelectedHours(hours);
-    setSelectedMinutes(minutes);
-    setSelectedSeconds(seconds);
+  const setPresetTime = (h: number, m: number, s: number) => {
+    setHours(h.toString());
+    setMinutes(m.toString());
+    setSeconds(s.toString());
   };
 
   return (
@@ -429,13 +426,48 @@ export default function TimersScreen() {
                   onChangeText={setTimerName}
                 />
 
-                <Text style={styles.pickerLabel}>Set Duration:</Text>
-                <TimerPicker
-                  onTimeChange={handleTimeChange}
-                  initialHours={selectedHours}
-                  initialMinutes={selectedMinutes}
-                  initialSeconds={selectedSeconds}
-                />
+                <Text style={styles.inputLabel}>Set Duration:</Text>
+                
+                <View style={styles.timeInputsRow}>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeInputLabel}>Hours</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      value={hours}
+                      onChangeText={setHours}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                  </View>
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeInputLabel}>Minutes</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      placeholder="25"
+                      placeholderTextColor={colors.textSecondary}
+                      value={minutes}
+                      onChangeText={setMinutes}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                  </View>
+                  <Text style={styles.timeSeparator}>:</Text>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.timeInputLabel}>Seconds</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      value={seconds}
+                      onChangeText={setSeconds}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
 
                 <View style={styles.presetContainer}>
                   <Text style={styles.presetLabel}>Quick Presets:</Text>
@@ -482,10 +514,10 @@ export default function TimersScreen() {
                 <View style={styles.selectedTimeDisplay}>
                   <Text style={styles.selectedTimeLabel}>Selected Time:</Text>
                   <Text style={styles.selectedTimeValue}>
-                    {selectedHours > 0 && `${selectedHours}h `}
-                    {selectedMinutes > 0 && `${selectedMinutes}m `}
-                    {selectedSeconds > 0 && `${selectedSeconds}s`}
-                    {selectedHours === 0 && selectedMinutes === 0 && selectedSeconds === 0 && '0s'}
+                    {parseInt(hours) > 0 && `${parseInt(hours)}h `}
+                    {parseInt(minutes) > 0 && `${parseInt(minutes)}m `}
+                    {parseInt(seconds) > 0 && `${parseInt(seconds)}s`}
+                    {parseInt(hours) === 0 && parseInt(minutes) === 0 && parseInt(seconds) === 0 && '0s'}
                   </Text>
                 </View>
               </ScrollView>
@@ -642,15 +674,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  pickerLabel: {
+  inputLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: 12,
     marginTop: 8,
   },
+  timeInputsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    gap: 8,
+  },
+  timeInputContainer: {
+    alignItems: 'center',
+  },
+  timeInputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  timeInput: {
+    backgroundColor: colors.highlight,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    minWidth: 70,
+  },
+  timeSeparator: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 20,
+  },
   presetContainer: {
-    marginTop: 24,
+    marginTop: 8,
     marginBottom: 16,
   },
   presetLabel: {
@@ -666,7 +733,7 @@ const styles = StyleSheet.create({
   },
   presetButton: {
     backgroundColor: colors.highlight,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1,
