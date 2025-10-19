@@ -20,6 +20,7 @@ export default function RoutinesScreen() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null);
   const [routineName, setRoutineName] = useState('');
   const [routineDescription, setRoutineDescription] = useState('');
@@ -83,6 +84,50 @@ export default function RoutinesScreen() {
     setShowAddModal(false);
   };
 
+  const openEditModal = (routine: Routine) => {
+    setSelectedRoutine(routine);
+    setRoutineName(routine.name);
+    setRoutineDescription(routine.description);
+    setRoutineSteps([...routine.steps]);
+    setShowDetailModal(false);
+    setShowEditModal(true);
+  };
+
+  const saveEditedRoutine = () => {
+    if (!routineName.trim()) {
+      Alert.alert('Error', 'Please enter a routine name');
+      return;
+    }
+
+    const filteredSteps = routineSteps.filter(step => step.trim() !== '');
+    if (filteredSteps.length === 0) {
+      Alert.alert('Error', 'Please add at least one step');
+      return;
+    }
+
+    if (!selectedRoutine) return;
+
+    const updatedRoutines = routines.map(routine => {
+      if (routine.id === selectedRoutine.id) {
+        return {
+          ...routine,
+          name: routineName,
+          description: routineDescription,
+          steps: filteredSteps,
+        };
+      }
+      return routine;
+    });
+
+    saveRoutines(updatedRoutines);
+    
+    setRoutineName('');
+    setRoutineDescription('');
+    setRoutineSteps(['']);
+    setSelectedRoutine(null);
+    setShowEditModal(false);
+  };
+
   const deleteRoutine = (routineId: string) => {
     Alert.alert(
       'Delete Routine',
@@ -95,6 +140,10 @@ export default function RoutinesScreen() {
           onPress: () => {
             const updatedRoutines = routines.filter(r => r.id !== routineId);
             saveRoutines(updatedRoutines);
+            if (selectedRoutine?.id === routineId) {
+              setShowDetailModal(false);
+              setSelectedRoutine(null);
+            }
           },
         },
       ]
@@ -343,8 +392,98 @@ export default function RoutinesScreen() {
                       <Text style={styles.stepDetailText}>{step}</Text>
                     </View>
                   ))}
+
+                  <View style={styles.actionButtons}>
+                    <Pressable
+                      style={[buttonStyles.primary, { flex: 1 }]}
+                      onPress={() => openEditModal(selectedRoutine)}
+                    >
+                      <IconSymbol name="pencil" color="#ffffff" size={20} />
+                      <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[buttonStyles.secondary, { flex: 1 }]}
+                      onPress={() => deleteRoutine(selectedRoutine.id)}
+                    >
+                      <IconSymbol name="trash" color="#ffffff" size={20} />
+                      <Text style={[buttonStyles.text, { marginLeft: 8 }]}>Delete</Text>
+                    </Pressable>
+                  </View>
                 </ScrollView>
               )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Edit Routine Modal */}
+        <Modal
+          visible={showEditModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowEditModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={commonStyles.title}>Edit Routine</Text>
+                <Pressable onPress={() => setShowEditModal(false)}>
+                  <IconSymbol name="xmark" color={colors.text} size={24} />
+                </Pressable>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <TextInput
+                  style={commonStyles.input}
+                  placeholder="Routine Name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={routineName}
+                  onChangeText={setRoutineName}
+                />
+
+                <TextInput
+                  style={commonStyles.textArea}
+                  multiline
+                  numberOfLines={3}
+                  placeholder="Description (optional)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={routineDescription}
+                  onChangeText={setRoutineDescription}
+                />
+
+                <Text style={styles.modalLabel}>Steps:</Text>
+                {routineSteps.map((step, index) => (
+                  <View key={index} style={styles.stepInputRow}>
+                    <Text style={styles.stepNumber}>{index + 1}.</Text>
+                    <TextInput
+                      style={[commonStyles.input, { flex: 1, marginBottom: 0 }]}
+                      placeholder="Step description"
+                      placeholderTextColor={colors.textSecondary}
+                      value={step}
+                      onChangeText={(text) => updateStep(index, text)}
+                    />
+                    {routineSteps.length > 1 && (
+                      <Pressable
+                        style={styles.removeStepButton}
+                        onPress={() => removeStep(index)}
+                      >
+                        <IconSymbol name="xmark" color={colors.secondary} size={20} />
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+
+                <Pressable
+                  style={styles.addStepButton}
+                  onPress={addStepField}
+                >
+                  <IconSymbol name="plus" color={colors.primary} size={20} />
+                  <Text style={styles.addStepText}>Add Step</Text>
+                </Pressable>
+              </ScrollView>
+
+              <Pressable style={buttonStyles.primary} onPress={saveEditedRoutine}>
+                <Text style={buttonStyles.text}>Save Changes</Text>
+              </Pressable>
             </View>
           </View>
         </Modal>
@@ -547,5 +686,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 24,
     paddingTop: 4,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
   },
 });
