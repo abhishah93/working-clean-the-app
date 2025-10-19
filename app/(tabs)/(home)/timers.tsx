@@ -6,6 +6,7 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, buttonStyles } from "@/styles/commonStyles";
 import { notificationService } from "@/utils/notificationService";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 
 interface Timer {
   id: string;
@@ -24,6 +25,8 @@ export default function TimersScreen() {
   const [timerMinutes, setTimerMinutes] = useState('25');
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const appState = useRef(AppState.currentState);
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const hasInitialized = useRef(false);
 
   useEffect(() => {
     initializeNotifications();
@@ -41,6 +44,9 @@ export default function TimersScreen() {
 
     return () => {
       subscription.remove();
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
     };
   }, []);
 
@@ -55,8 +61,9 @@ export default function TimersScreen() {
           if (timer.isRunning && timer.remaining > 0) {
             const newRemaining = timer.remaining - 1;
             if (newRemaining === 0) {
-              // Timer completed
+              // Timer completed - play alarm sound
               console.log('Timer completed:', timer.name);
+              playAlarmSound();
               return { ...timer, remaining: 0, isRunning: false, startedAt: undefined };
             }
             return { ...timer, remaining: newRemaining };
@@ -68,6 +75,36 @@ export default function TimersScreen() {
 
     return () => clearInterval(interval);
   }, [timers.length]);
+
+  const playAlarmSound = async () => {
+    try {
+      // Configure audio mode
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+
+      // Create and play sound
+      const { sound } = await Audio.Sound.createAsync(
+        // Using a system sound - you can replace this with a custom sound file
+        { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
+        { shouldPlay: true, volume: 1.0 }
+      );
+      
+      soundRef.current = sound;
+
+      // Unload sound after it finishes playing
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+
+      console.log('Playing alarm sound');
+    } catch (error) {
+      console.error('Error playing alarm sound:', error);
+    }
+  };
 
   const loadTimers = async () => {
     try {
@@ -122,13 +159,23 @@ export default function TimersScreen() {
   };
 
   const initializeNotifications = async () => {
+    // Only initialize once
+    if (hasInitialized.current) {
+      console.log('Notifications already initialized');
+      return;
+    }
+
     const initialized = await notificationService.initialize();
     setNotificationsEnabled(initialized);
+    hasInitialized.current = true;
+    
     if (!initialized) {
       Alert.alert(
         'Notifications Disabled',
         'Please enable notifications in your device settings to receive timer alerts.'
       );
+    } else {
+      console.log('Notifications initialized successfully');
     }
   };
 
@@ -332,7 +379,7 @@ export default function TimersScreen() {
                 {timer.remaining === 0 && (
                   <View style={styles.completedBanner}>
                     <IconSymbol name="checkmark.circle.fill" color="#ffffff" size={20} />
-                    <Text style={styles.completedText}>Timer Complete!</Text>
+                    <Text style={styles.completedText}>Timer Complete! 🔔</Text>
                   </View>
                 )}
               </View>

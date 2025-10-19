@@ -18,12 +18,12 @@ export default function ProfileScreen() {
           </View>
           <Text style={commonStyles.title}>Your Profile</Text>
           <Text style={commonStyles.textSecondary}>
-            Manage your Work Clean settings
+            Manage your Working Clean settings
           </Text>
         </View>
 
         <View style={commonStyles.card}>
-          <Text style={commonStyles.sectionTitle}>About Work Clean</Text>
+          <Text style={commonStyles.sectionTitle}>About Working Clean</Text>
           <Text style={commonStyles.text}>
             This app is based on the principles from &quot;Work Clean&quot; by Dan Charnas, 
             which teaches the organizational and mental practices of professional chefs 

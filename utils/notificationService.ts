@@ -20,9 +20,14 @@ export interface NotificationConfig {
 
 class NotificationService {
   private initialized = false;
+  private permissionStatus: string | null = null;
 
   async initialize() {
-    if (this.initialized) return;
+    // Return cached status if already initialized
+    if (this.initialized && this.permissionStatus) {
+      console.log('Using cached notification permission status:', this.permissionStatus);
+      return this.permissionStatus === 'granted';
+    }
 
     try {
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -33,8 +38,12 @@ class NotificationService {
         finalStatus = status;
       }
 
+      // Cache the permission status
+      this.permissionStatus = finalStatus;
+
       if (finalStatus !== 'granted') {
         console.log('Notification permissions not granted');
+        this.initialized = true;
         return false;
       }
 
@@ -62,17 +71,22 @@ class NotificationService {
       }
 
       this.initialized = true;
-      console.log('Notification service initialized');
+      console.log('Notification service initialized successfully');
       return true;
     } catch (error) {
       console.error('Error initializing notifications:', error);
+      this.initialized = true;
       return false;
     }
   }
 
   async scheduleNotification(config: NotificationConfig): Promise<string | null> {
     try {
-      await this.initialize();
+      const isInitialized = await this.initialize();
+      if (!isInitialized) {
+        console.log('Notifications not enabled, skipping schedule');
+        return null;
+      }
 
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: {

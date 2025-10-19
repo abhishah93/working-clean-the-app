@@ -101,7 +101,7 @@ export default function HomeScreen() {
       {Platform.OS === 'ios' && (
         <Stack.Screen
           options={{
-            title: "Work Clean",
+            title: "Working Clean",
             headerRight: renderHeaderRight,
             headerLeft: renderHeaderLeft,
           }}
@@ -113,7 +113,7 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Text style={commonStyles.title}>Work Clean Productivity</Text>
+            <Text style={commonStyles.title}>Working Clean</Text>
             <Text style={commonStyles.textSecondary}>
               Select a day or week to plan your meeze
             </Text>
