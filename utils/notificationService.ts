@@ -1,6 +1,7 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform, Alert } from 'react-native';
+import * as Device from 'expo-device';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -30,6 +31,14 @@ class NotificationService {
     }
 
     try {
+      // Check if running on a physical device (required for push notifications)
+      if (!Device.isDevice) {
+        console.log('Must use physical device for Push Notifications');
+        this.initialized = true;
+        this.permissionStatus = 'denied';
+        return false;
+      }
+
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
 
@@ -48,6 +57,7 @@ class NotificationService {
       }
 
       if (Platform.OS === 'android') {
+        // Set up Android notification channels
         await Notifications.setNotificationChannelAsync('default', {
           name: 'default',
           importance: Notifications.AndroidImportance.MAX,
@@ -68,6 +78,8 @@ class NotificationService {
           vibrationPattern: [0, 250],
           sound: 'default',
         });
+
+        console.log('Android notification channels configured');
       }
 
       this.initialized = true;
@@ -76,6 +88,7 @@ class NotificationService {
     } catch (error) {
       console.error('Error initializing notifications:', error);
       this.initialized = true;
+      this.permissionStatus = 'denied';
       return false;
     }
   }
@@ -180,6 +193,12 @@ class NotificationService {
     callback: (response: Notifications.NotificationResponse) => void
   ) {
     return Notifications.addNotificationResponseReceivedListener(callback);
+  }
+
+  // Reset initialization state (useful for testing or re-initialization)
+  reset() {
+    this.initialized = false;
+    this.permissionStatus = null;
   }
 }
 

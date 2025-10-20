@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Natively",
@@ -16,7 +17,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.Natively",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "This app uses audio for timer alarms.",
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {
@@ -25,7 +28,14 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.Natively"
+      "package": "com.anonymous.Natively",
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK"
+      ]
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",
@@ -34,14 +44,36 @@
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/natively-dark.png",
+          "color": "#ffffff",
+          "sounds": [],
+          "mode": "production"
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for timer alarms."
+        }
+      ],
+      [
+        "@react-native-community/datetimepicker",
+        {}
+      ]
     ],
     "scheme": "natively",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "your-project-id-here"
+      }
     }
   }
 }

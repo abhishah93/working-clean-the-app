@@ -172,10 +172,8 @@ export default function TimersScreen() {
     hasInitialized.current = true;
     
     if (!initialized) {
-      Alert.alert(
-        'Notifications Disabled',
-        'Please enable notifications in your device settings to receive timer alerts.'
-      );
+      console.log('Notifications not available - timers will still work but without background alerts');
+      // Don't show alert immediately - only show if user tries to use a timer
     } else {
       console.log('Notifications initialized successfully');
     }
@@ -215,6 +213,31 @@ export default function TimersScreen() {
   };
 
   const toggleTimer = async (id: string) => {
+    const timer = timers.find(t => t.id === id);
+    if (!timer) return;
+
+    const newIsRunning = !timer.isRunning;
+
+    // Show notification warning only when starting a timer if notifications are disabled
+    if (newIsRunning && !notificationsEnabled) {
+      Alert.alert(
+        'Notifications Disabled',
+        'Timer will run, but you won\'t receive an alert when it completes. Enable notifications in your device settings for alerts.',
+        [
+          { text: 'OK', onPress: () => {
+            // Continue starting the timer
+            startTimer(id);
+          }},
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+      return;
+    }
+
+    startTimer(id);
+  };
+
+  const startTimer = async (id: string) => {
     setTimers(prevTimers =>
       prevTimers.map(timer => {
         if (timer.id === id) {
